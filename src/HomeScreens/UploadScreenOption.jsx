@@ -7,6 +7,7 @@ import {
   Dimensions,
   Image,
   Modal,
+  Linking,
   PermissionsAndroid,
   Platform,
   SafeAreaView,
@@ -54,6 +55,8 @@ const isVideo = item =>
 const createAndroidPermissionSet = (version, intents) => {
   const permissions = new Set();
 
+  const canUse = key => Boolean(key) && typeof key === 'string';
+
   if (intents.includes('camera')) {
     permissions.add(PermissionsAndroid.PERMISSIONS.CAMERA);
   }
@@ -63,19 +66,58 @@ const createAndroidPermissionSet = (version, intents) => {
   }
 
   if (intents.includes('library')) {
-    if (version >= 33) {
-      permissions.add(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES);
-      permissions.add(PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO);
-    } else {
-      permissions.add(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+    const readMediaImages = PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES;
+    const readMediaVideo = PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO;
+    const readExternal = PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
+    const writeExternal = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
 
-      if (version <= 28) {
-        permissions.add(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+    if (version >= 33 && canUse(readMediaImages) && canUse(readMediaVideo)) {
+      permissions.add(readMediaImages);
+      permissions.add(readMediaVideo);
+    } else if (canUse(readExternal)) {
+      permissions.add(readExternal);
+
+      if (version <= 28 && canUse(writeExternal)) {
+        permissions.add(writeExternal);
       }
     }
   }
 
-  return Array.from(permissions);
+  return Array.from(permissions).filter(Boolean);
+};
+
+const requestAndroidPermissions = async (version, intents) => {
+  const required = createAndroidPermissionSet(version, intents);
+  if (!required.length) {
+    return { granted: true, blocked: [] };
+  }
+
+  const toRequest = [];
+  const alreadyBlocked = [];
+
+  for (const key of required) {
+    const has = await PermissionsAndroid.check(key);
+    if (!has) {
+      toRequest.push(key);
+    }
+  }
+
+  if (!toRequest.length) {
+    return { granted: true, blocked: [] };
+  }
+
+  const result = await PermissionsAndroid.requestMultiple(toRequest);
+  const denied = [];
+  for (const key of toRequest) {
+    if (result[key] === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+      alreadyBlocked.push(key);
+    } else if (result[key] !== PermissionsAndroid.RESULTS.GRANTED) {
+      denied.push(key);
+    }
+  }
+
+  const allOk = denied.length === 0 && alreadyBlocked.length === 0;
+  return { granted: allOk, blocked: alreadyBlocked, denied };
 };
 
 const OptionButton = ({ icon, label, description, onPress, isLast, disabled }) => (
@@ -155,23 +197,39 @@ const UploadScreenOption = () => {
   }, [navigation]);
 
   const quotedPreview = useMemo(() => {
-    if (!quotedPost || !Array.isArray(quotedPost.attachments)) {
+    if (!quotedPost) {
       return null;
     }
-    const mediaItem = quotedPost.attachments.find(att => att) || null;
+
+    const attachments = Array.isArray(quotedPost.attachments) ? quotedPost.attachments : [];
+    const media = Array.isArray(quotedPost.media) ? quotedPost.media : [];
+    const mediaItem = attachments.find(Boolean) || media.find(Boolean);
     if (!mediaItem) {
       return null;
     }
-    const objectKey = mediaItem?.metadata?.r2Key || mediaItem?.metadata?.objectKey;
+
+    const objectKey =
+      mediaItem?.metadata?.r2Key ||
+      mediaItem?.metadata?.objectKey ||
+      mediaItem?.r2Key ||
+      mediaItem?.objectKey;
     const fallbackUrl = mediaItem?.url || mediaItem?.uri || mediaItem?.path;
     const url =
-      absolutizeMediaUrl(buildMediaUrlFromKey(objectKey)) ||
+      (objectKey && absolutizeMediaUrl(buildMediaUrlFromKey(objectKey))) ||
       absolutizeMediaUrl(fallbackUrl) ||
       null;
+
     if (!url) {
       return null;
     }
-    return { uri: url, type: mediaItem?.type || mediaItem?.mediaType || mediaItem?.metadata?.type };
+    return {
+      uri: url,
+      type:
+        mediaItem?.type ||
+        mediaItem?.mediaType ||
+        mediaItem?.metadata?.type ||
+        (mediaItem?.mime || '').split('/')[0],
+    };
   }, [quotedPost]);
 
   const quotedAuthor =
@@ -265,26 +323,34 @@ const UploadScreenOption = () => {
     [],
   );
 
-  const requestPermissions = useCallback(
+  const ensurePermissions = useCallback(
     async intents => {
       if (Platform.OS !== 'android') {
         return true;
       }
 
-      const required = createAndroidPermissionSet(androidVersion, intents);
-      if (!required.length) {
-        return true;
-      }
-
       try {
-        const result = await PermissionsAndroid.requestMultiple(required);
-        return required.every(key => result[key] === PermissionsAndroid.RESULTS.GRANTED);
+        const { granted, blocked } = await requestAndroidPermissions(androidVersion, intents);
+        if (granted) {
+          return true;
+        }
+
+        if (blocked.length) {
+          showNotice(
+            'warning',
+            'Permission blocked',
+            'Please enable camera/microphone/media access in Settings to continue.',
+          );
+          Linking.openSettings().catch(() => {});
+        }
+        return false;
       } catch (error) {
         console.warn('Permission error:', error);
+        showNotice('error', 'Permission error', 'Unable to request permission. Please try again.');
         return false;
       }
     },
-    [androidVersion],
+    [androidVersion, showNotice],
   );
 
   const appendMedia = useCallback(items => {
@@ -292,7 +358,7 @@ const UploadScreenOption = () => {
   }, []);
 
   const openGallery = useCallback(async () => {
-    const granted = await requestPermissions(['library']);
+    const granted = await ensurePermissions(['library']);
     if (!granted) {
       showNotice(
         'warning',
@@ -317,10 +383,10 @@ const UploadScreenOption = () => {
         showNotice('error', 'Gallery unavailable', 'We could not open your gallery. Please try again.');
       }
     }
-  }, [appendMedia, requestPermissions, showNotice]);
+  }, [appendMedia, ensurePermissions, showNotice]);
 
   const takePhoto = useCallback(async () => {
-    const granted = await requestPermissions(['camera', 'library']);
+    const granted = await ensurePermissions(['camera', 'library']);
     if (!granted) {
       showNotice('warning', 'Permission needed', 'Camera access is required to capture a photo.');
       return;
@@ -338,10 +404,10 @@ const UploadScreenOption = () => {
         showNotice('error', 'Unable to open camera', 'Please try again or check your camera permissions.');
       }
     }
-  }, [appendMedia, requestPermissions, showNotice]);
+  }, [appendMedia, ensurePermissions, showNotice]);
 
   const takeVideo = useCallback(async () => {
-    const granted = await requestPermissions(['camera', 'audio', 'library']);
+    const granted = await ensurePermissions(['camera', 'audio', 'library']);
     if (!granted) {
       showNotice(
         'warning',
@@ -363,7 +429,7 @@ const UploadScreenOption = () => {
         showNotice('error', 'Unable to record video', 'Please try again or check your camera permissions.');
       }
     }
-  }, [appendMedia, requestPermissions, showNotice]);
+  }, [appendMedia, ensurePermissions, showNotice]);
 
   const removeMedia = useCallback(indexToRemove => {
     setMedia(current => current.filter((_, index) => index !== indexToRemove));
@@ -575,15 +641,17 @@ const handlePost = useCallback(async () => {
       );
     }
 
+    const trimmedCaption = (caption || '').trim();
     const payload = {
-      content: (caption || '').trim(),
-      attachments,
-      ...(quotedPost?.id ? { quotedPostId: quotedPost.id } : {}),
+      ...(trimmedCaption ? { content: trimmedCaption } : {}),
+      ...(attachments.length ? { attachments } : {}),
+      ...(quotedPost?.id ? { quotedPostId: Number(quotedPost.id) || quotedPost.id } : {}),
     };
 
     const create = await authService.CreatePost(payload);
+    console.log("CREATE",create.data)
     if (create.status !== 200 && create.status !== 201) {
-      throw new Error(`Create post failed (${create.status})`);
+      throw new Error(`Create post failed (${create.data.message})`);
     }
 
     showNotice('success', 'Posted', 'Your post has been published.');
@@ -863,31 +931,7 @@ const handlePost = useCallback(async () => {
           </ScrollView>
         </View>
 
-        <View style={styles.optionsPanel}>
-          <Text style={styles.optionsTitle}>Upload options</Text>
-          <OptionButton
-            icon="images-outline"
-            label="Browse gallery"
-            description="Pick multiple photos and videos from your device."
-            onPress={openGallery}
-            disabled={isUploading}
-          />
-          <OptionButton
-            icon="camera-outline"
-            label="Take a photo"
-            description="Capture a new photo with quick editing."
-            onPress={takePhoto}
-            disabled={isUploading}
-          />
-          <OptionButton
-            icon="videocam-outline"
-            label="Record a video"
-            description="Shoot a short video with audio."
-            onPress={takeVideo}
-            disabled={isUploading}
-            isLast
-          />
-        </View>
+        <View style={styles.bottomSpacer} />
 
         {previewItem && (
           <Modal transparent animationType="fade" onRequestClose={() => setPreviewItem(null)}>
@@ -922,6 +966,38 @@ const handlePost = useCallback(async () => {
         </View>
       )}
 
+      <View
+        style={[styles.optionsDock, isUploading && { opacity: 0.65 }]}
+        pointerEvents={isUploading ? 'none' : 'auto'}
+      >
+        <TouchableOpacity
+          style={[styles.dockButton, isUploading && styles.dockButtonDisabled]}
+          onPress={openGallery}
+          activeOpacity={0.85}
+          disabled={isUploading}
+        >
+          <Ionicons name="images-outline" size={22} color="#3b4cca" />
+          <Text style={styles.dockLabel}>Gallery</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.dockButton, isUploading && styles.dockButtonDisabled]}
+          onPress={takePhoto}
+          activeOpacity={0.85}
+          disabled={isUploading}
+        >
+          <Ionicons name="camera-outline" size={22} color="#3b4cca" />
+          <Text style={styles.dockLabel}>Photo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.dockButton, isUploading && styles.dockButtonDisabled]}
+          onPress={takeVideo}
+          activeOpacity={0.85}
+          disabled={isUploading}
+        >
+          <Ionicons name="videocam-outline" size={22} color="#3b4cca" />
+          <Text style={styles.dockLabel}>Video</Text>
+        </TouchableOpacity>
+      </View>
       {isUploading && (
         <View style={styles.loadingOverlay} pointerEvents="auto">
           <View style={styles.loadingCard}>
@@ -946,6 +1022,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 12,
+    paddingBottom: 140, // allow room for the bottom dock
   },
   header: {
     flexDirection: 'row',
@@ -1197,60 +1274,43 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 20,
   },
-  optionsPanel: {
+  bottomSpacer: {
+    height: 120,
+  },
+  optionsDock: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 18,
     backgroundColor: '#ffffff',
-    paddingVertical: 18,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    marginTop: 14,
-    marginBottom: 10,
-    shadowColor: '#1b1f3b',
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  optionsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#20232a',
-    marginBottom: 12,
-  },
-  optionButton: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eef0f6',
+    justifyContent: 'space-between',
+    shadowColor: '#1b1f3b',
+    shadowOpacity: 0.12,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
-  optionButtonLast: {
-    borderBottomWidth: 0,
-    paddingBottom: 4,
-  },
-  optionButtonDisabled: {
-    opacity: 0.4,
-  },
-  optionIconWrapper: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: 'rgba(59, 76, 202, 0.12)',
+  dockButton: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    paddingVertical: 8,
+    marginHorizontal: 6,
+    borderRadius: 12,
+    backgroundColor: '#f1f3fb',
   },
-  optionCopy: {
-    flex: 1,
+  dockButtonDisabled: {
+    opacity: 0.4,
   },
-  optionLabel: {
-    fontSize: 15,
+  dockLabel: {
+    marginTop: 6,
+    fontSize: 13,
     fontWeight: '600',
     color: '#20232a',
-  },
-  optionDescription: {
-    fontSize: 13,
-    color: '#7e8499',
-    marginTop: 2,
   },
   celebrationToast: {
     position: 'absolute',

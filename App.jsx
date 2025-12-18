@@ -1,7 +1,7 @@
 
 
 import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, StatusBar } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -13,7 +13,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import Feather from 'react-native-vector-icons/Feather';
 import FontAwesome6 from 'react-native-vector-icons/FontAwesome6';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import appConfig from './app.json';
 
 import Colors from './src/Common/Colors';
@@ -22,6 +22,7 @@ import HomeScreen from './src/ScreenComponents/Home';
 import ChannelScreen from './src/ScreenComponents/Channels';
 import DealsScreen from './src/ScreenComponents/Deals';
 import JobsScreen from './src/ScreenComponents/Jobs';
+import DiscountDetailsScreen from './src/ScreenComponents/DiscountDetails';
 
 import UploadScreen from './src/HomeScreens/UploadScreenOption';
 import OnboardingScreen from './src/SignUpFlow/StartingScreen';
@@ -167,84 +168,95 @@ function App() {
   return (
     <AppProvider>
       <SafeAreaProvider>
-        <NavigationContainer>
-          <Stack.Navigator
-            screenOptions={{ headerShown: false }}
-          //initialRouteName="OnboardingScreen"
-          >
-            <Stack.Screen
-              name="SplashScreen"
-              component={SplashScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#f6f7fb' }} edges={['top', 'left', 'right']}>
+          <StatusBar barStyle='light-content' backgroundColor="#ffff" translucent={true} />
+          <NavigationContainer>
+            <Stack.Navigator
+              screenOptions={{ headerShown: false }}
+            //initialRouteName="OnboardingScreen"
+            >
+              <Stack.Screen
+                name="SplashScreen"
+                component={SplashScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
 
-            <Stack.Screen
-              name="OnboardingScreen"
-              component={OnboardingScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
+              <Stack.Screen
+                name="OnboardingScreen"
+                component={OnboardingScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
 
-            <Stack.Screen
-              name="EmailVerificationScreen"
-              component={EmailVerificationScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="SignUpScreen"
-              component={SignUpScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
+              <Stack.Screen
+                name="EmailVerificationScreen"
+                component={EmailVerificationScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen
+                name="SignUpScreen"
+                component={SignUpScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
 
-            <Stack.Screen
-              name="LoginScreen"
-              component={LoginScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="ProfileSetupScreen"
-              component={ProfileSetupScreen}
-              options={{
-                //  title: 'Upload',
-                animationEnabled: true,
-                headerShown: false,
-              }}
-            />
-            {/* Bottom Tab as initial route */}
-            <Stack.Screen name="MainTabs" component={BottomTabs} />
+              <Stack.Screen
+                name="LoginScreen"
+                component={LoginScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen
+                name="ProfileSetupScreen"
+                component={ProfileSetupScreen}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
+              {/* Bottom Tab as initial route */}
+              <Stack.Screen name="MainTabs" component={BottomTabs} />
 
-            {/* Other Screens */}
-            <Stack.Screen
-              name="UploadScreen"
-              component={UploadScreen}
-              options={{
-                title: 'Upload',
-                animationEnabled: true,
-              }}
-            />
-            {/* <Stack.Screen name="UploadScreen" component={UploadScreen} options={{ title: 'Upload' }} /> */}
-            {/* Future Screens can be added below */}
-          </Stack.Navigator>
-        </NavigationContainer>
+              {/* Other Screens */}
+              <Stack.Screen
+                name="DiscountDetails"
+                component={DiscountDetailsScreen}
+                options={{
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
+              <Stack.Screen
+                name="UploadScreen"
+                component={UploadScreen}
+                options={{
+                  title: 'Upload',
+                  animationEnabled: true,
+                }}
+              />
+              {/* <Stack.Screen name="UploadScreen" component={UploadScreen} options={{ title: 'Upload' }} /> */}
+              {/* Future Screens can be added below */}
+            </Stack.Navigator>
+          </NavigationContainer>
+        </SafeAreaView>
       </SafeAreaProvider>
     </AppProvider>
   );

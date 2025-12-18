@@ -44,7 +44,7 @@ export default function EmailVerificationScreen() {
 
     if (result.status === 200) {
       Toast.show(result.data?.message || "Verification code sent");
-      navigation.navigate("SignUpScreen");
+      navigation.navigate("main");
     } else {
       Toast.show(result.data?.error || result.data?.message || "Something went wrong!");
     }

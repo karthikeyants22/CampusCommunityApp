@@ -6,6 +6,7 @@ import {
   Easing,
   Animated,
   FlatList,
+  ToastAndroid,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -102,38 +103,33 @@ const resolveServerHasMore = (payload = {}, currentPage = 1) => {
 const ANNOUNCEMENTS = [
   {
     id: 'ann-1',
-    title: 'Orientation Week Kickoff',
-    summary: 'Orientation week launches Friday with campus tours, mixers, and resource fairs.',
-    schedule: 'Fri, Oct 18 � 9:00 AM',
+    title: 'Welcome week starts Friday',
+    summary: 'Tours, mixers, resource fair.',
+    schedule: 'Fri, Oct 18',
     location: 'Student Hub',
-    tag: 'Live this week',
+    tag: 'This week',
     accentColor: '#38bdf8',
-    ctaLabel: 'View kickoff guide',
-    details:
-      'Join peer mentors for discovery walks, meet student leaders, and pick up your welcome kit before the kickoff rally.',
+    ctaLabel: 'View plan',
   },
   {
     id: 'ann-2',
-    title: 'Innovation Challenge Finals',
-    summary: 'Top five startup teams pitch live Tuesday evening. Seats are limited.',
-    schedule: 'Tue, Oct 22 � 6:30 PM',
+    title: 'Innovation finals Tuesday',
+    summary: 'Top five teams pitch in the lab.',
+    schedule: 'Tue, Oct 22',
     location: 'Innovation Lab',
-    tag: 'Spotlight event',
+    tag: 'Spotlight',
     accentColor: '#f97316',
-    ctaLabel: 'Reserve a seat',
-    details:
-      'Reserve a seat to cheer on the finalists, connect with alumni judges, and vote for the community choice award.',
+    ctaLabel: 'RSVP',
   },
   {
     id: 'ann-3',
-    title: 'Fall Club Fair',
-    summary: 'Over 60 clubs are recruiting on the quad. Tap to preview the lineup.',
-    schedule: 'Thu, Oct 24 � 12:00 PM',
+    title: 'Fall club fair Thursday',
+    summary: '60+ clubs on the quad.',
+    schedule: 'Thu, Oct 24',
     location: 'Central Quad',
     tag: 'Campus life',
     accentColor: '#34d399',
-    ctaLabel: 'Preview booths',
-    details: 'Swing by to explore academic societies, creative collectives, and volunteer orgs. Giveaways and live music from noon.',
+    ctaLabel: 'Preview',
   },
 ];
 const ANNOUNCEMENT_COUNT = ANNOUNCEMENTS.length;
@@ -1589,7 +1585,7 @@ export default function FeedScreen() {
       return (
         <FeedStatusCard
           icon="wifi-off"
-          title="Network issue"
+          title="Could not refresh post"
           // message={feedError}
           actionLabel="Try again"
           onAction={handleRetryFeed}
@@ -1673,6 +1669,13 @@ export default function FeedScreen() {
   const [isCommentsLoading, setIsCommentsLoading] = useState(false);
   const [commentsError, setCommentsError] = useState(null);
   const [previewMedia, setPreviewMedia] = useState(null);
+  const showSaveFeedback = useCallback(message => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('', message);
+    }
+  }, []);
 
   const announcementTranslateY = announcementAnim.interpolate({
     inputRange: [0, 1],
@@ -2033,6 +2036,7 @@ export default function FeedScreen() {
           },
           ...(Number.isFinite(savesCount) ? { saves: savesCount, saveCount: savesCount } : null),
         }));
+        showSaveFeedback(finalIsSaved ? 'Saved to bookmarks' : 'Removed from saved');
       } catch (error) {
         console.warn('Save request failed:', error?.message || error);
         if (previousSnapshot) {
@@ -2246,17 +2250,17 @@ export default function FeedScreen() {
   /** ⬇️ this header is now passed into FlatList so it scrolls with content */
   const renderAnnouncementHeader = useCallback(() => {
     const shouldShowAnnouncements = hasAnnouncements && shouldRenderAnnouncement;
+    const showSuccess = Boolean(uploadSuccessMessage);
 
-    if (!shouldShowAnnouncements && !uploadSuccessMessage) {
+    if (!shouldShowAnnouncements && !showSuccess) {
       return null;
     }
 
-    const accentColor = activeAnnouncement?.accentColor || '#7c3aed';
-    const ctaLabel = activeAnnouncement?.ctaLabel || 'See details';
+    const accentColor = activeAnnouncement?.accentColor || '#2563EB';
 
     return (
-      <View style={styles.headerContainer}>
-        {uploadSuccessMessage ? (
+      <View style={styles.simpleAnnouncementContainer}>
+        {showSuccess ? (
           <View style={styles.successBanner}>
             <MaterialIcons name="check-circle" size={20} color="#0f5132" style={styles.successBannerIcon} />
             <Text style={styles.successBannerText}>{uploadSuccessMessage}</Text>
@@ -2272,170 +2276,76 @@ export default function FeedScreen() {
         ) : null}
 
         {shouldShowAnnouncements ? (
-          <Animated.View
-            style={[
-              styles.announcementContainer,
-              {
-                opacity: announcementOpacity,
-                transform: [{ translateY: announcementTranslateY }, { scale: announcementScale }],
-              },
-            ]}
-          >
-            <View style={styles.announcementHeroCard}>
-              <TouchableOpacity
-                activeOpacity={0.92}
-                style={styles.announcementHeroTouchable}
-                onPress={openAnnouncementsSheet}
+          <Animated.View style={[styles.announcementCard, { transform: [{ scale: announcementScale }] }]}>
+            <TouchableOpacity activeOpacity={0.9} onPress={openAnnouncementsSheet} style={styles.announcementTouchable}>
+              <LinearGradient
+                colors={[accentColor, '#0b1224']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.simpleAnnouncementBar}
               >
-                <View style={styles.announcementHeroHeader}>
-                  <View style={[styles.announcementHeroIcon, { backgroundColor: accentColor }]}>
-                    <MaterialIcons name="campaign" size={22} color="#ffffff" />
+                <View style={styles.announcementHeaderRow}>
+                  <View style={styles.announcementBadge}>
+                    <MaterialIcons name="campaign" size={16} color="#0b1224" />
+                    <Text style={styles.announcementBadgeText}>{activeAnnouncement?.tag || 'Announcement'}</Text>
                   </View>
-                  <View style={styles.announcementHeroTitleArea}>
-                    {activeAnnouncement?.tag ? (
-                      <View style={styles.announcementHeroTag}>
-                        <MaterialIcons name="bolt" size={14} color={accentColor} />
-                        <Text style={[styles.announcementHeroTagText, { color: accentColor }]}>
-                          {activeAnnouncement.tag}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <Text style={styles.announcementTitle}>
-                      {activeAnnouncement?.title || 'Announcement spotlight'}
-                    </Text>
+                  <View style={styles.announcementCountPill}>
+                    <Text style={styles.announcementCountText}>{ANNOUNCEMENT_COUNT} active</Text>
                   </View>
-                  <TouchableOpacity
-                    activeOpacity={0.85}
-                    style={styles.announcementExpandButton}
-                    onPress={e => {
-                      e?.stopPropagation?.();
-                      toggleAnnouncementsSheet();
-                    }}
-                  >
-                    <MaterialIcons
-                      name={isAnnouncementsSheetExpanded ? 'expand-less' : 'expand-more'}
-                      size={20}
-                      color="#ffffff"
-                    />
-                  </TouchableOpacity>
                 </View>
 
-                <View style={styles.announcementMetaBar}>
+                <View style={styles.simpleAnnouncementCopy}>
+                  <Text style={styles.simpleAnnouncementTitle} numberOfLines={2}>
+                    {activeAnnouncement?.title || 'Campus update'}
+                  </Text>
+                  {activeAnnouncement?.summary ? (
+                    <Text style={styles.simpleAnnouncementText} numberOfLines={3}>
+                      {activeAnnouncement.summary}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View style={styles.announcementMetaRow}>
                   {activeAnnouncement?.schedule ? (
-                    <View style={styles.announcementMetaItem}>
-                      <MaterialIcons name="event" size={16} color="#cfd3f0" />
-                      <Text style={styles.announcementMetaText}>{activeAnnouncement.schedule}</Text>
+                    <View style={styles.announcementMetaChip}>
+                      <MaterialIcons name="event" size={14} color="#E8EEFF" />
+                      <Text style={styles.announcementMetaChipText}>{activeAnnouncement.schedule}</Text>
                     </View>
                   ) : null}
                   {activeAnnouncement?.location ? (
-                    <View style={styles.announcementMetaItem}>
-                      <MaterialIcons name="place" size={16} color="#cfd3f0" />
-                      <Text style={styles.announcementMetaText}>{activeAnnouncement.location}</Text>
+                    <View style={styles.announcementMetaChip}>
+                      <MaterialIcons name="place" size={14} color="#E8EEFF" />
+                      <Text style={styles.announcementMetaChipText}>{activeAnnouncement.location}</Text>
                     </View>
                   ) : null}
                 </View>
 
-                <View style={styles.announcementSummary} {...announcementSwipeResponder.panHandlers}>
-                  <Animated.Text
-                    style={[
-                      styles.announcementText,
-                      styles.announcementAutoContent,
-                      { opacity: announcementContentOpacity, transform: [{ translateX: announcementContentTranslate }] },
-                    ]}
-                    numberOfLines={3}
-                  >
-                    {activeAnnouncement?.summary}
-                  </Animated.Text>
-                  {activeAnnouncement?.details ? (
-                    <Text style={styles.announcementDetailSnippet} numberOfLines={2}>
-                      {activeAnnouncement.details}
+                <View style={styles.announcementCtaRow}>
+                  <View style={styles.announcementCtaPill}>
+                    <Text style={[styles.announcementCtaText, { color: accentColor }]}>
+                      {activeAnnouncement?.ctaLabel || 'See details'}
                     </Text>
-                  ) : null}
+                    <MaterialIcons name="arrow-forward" size={16} color={accentColor} />
+                  </View>
+                  <Text style={styles.announcementHint}>Tap to view announcements</Text>
                 </View>
-              </TouchableOpacity>
-
-              <View style={styles.announcementActions}>
-                <TouchableOpacity
-                  style={[styles.announcementPrimaryAction, { backgroundColor: accentColor }]}
-                  activeOpacity={0.9}
-                  onPress={openAnnouncementsSheet}
-                >
-                  <MaterialIcons name="article" size={18} color="#0b1120" />
-                  <Text style={styles.announcementPrimaryActionText}>{ctaLabel}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.announcementSecondaryAction}
-                  activeOpacity={0.85}
-                  onPress={toggleAnnouncementsSheet}
-                >
-                  <MaterialIcons name="notifications-active" size={18} color="#a0a8d7" />
-                  <Text style={styles.announcementSecondaryActionText}>See all {ANNOUNCEMENT_COUNT}</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.announcementDots}>
-                {ANNOUNCEMENTS.map((a, idx) => (
-                  <View
-                    key={a.id}
-                    style={[styles.announcementDot, idx === activeAnnouncementIndex && styles.announcementDotActive]}
-                  />
-                ))}
-              </View>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.announcementChipRow}
-            >
-              {ANNOUNCEMENTS.map((announcement, idx) => {
-                const isActive = idx === activeAnnouncementIndex;
-                // return (
-                //   <TouchableOpacity
-                //     key={announcement.id}
-                //     style={[
-                //       styles.announcementTopicChip,
-                //       isActive && { backgroundColor: 'rgba(255,255,255,0.18)', borderColor: accentColor },
-                //     ]}
-                //     activeOpacity={0.85}
-                //     onPress={() => goToAnnouncementIndex(idx)}
-                //   >
-                //     <Text
-                //       style={[
-                //         styles.announcementTopicChipText,
-                //         isActive && { color: '#ffffff' },
-                //       ]}
-                //       numberOfLines={1}
-                //     >
-                //       {announcement.title}
-                //     </Text>
-                //   </TouchableOpacity>
-                // );
-              })}
-            </ScrollView>
+              </LinearGradient>
+            </TouchableOpacity>
           </Animated.View>
         ) : null}
       </View>
     );
   }, [
     activeAnnouncement,
-    activeAnnouncementIndex,
-    announcementContentOpacity,
-    announcementContentTranslate,
-    announcementOpacity,
     announcementScale,
-    announcementSwipeResponder,
-    announcementTranslateY,
     dismissUploadSuccessMessage,
-    goToAnnouncementIndex,
     hasAnnouncements,
-    isAnnouncementsSheetExpanded,
     openAnnouncementsSheet,
     shouldRenderAnnouncement,
-    toggleAnnouncementsSheet,
     uploadSuccessMessage,
   ]);
 
+  //const announcementHeader = useMemo(() => renderAnnouncementHeader(), [renderAnnouncementHeader]);
   const announcementHeader = useMemo(() => renderAnnouncementHeader(), [renderAnnouncementHeader]);
 
   const activeCommentPost = commentingPostId ? posts.find(post => post.id === commentingPostId) : null;
@@ -2481,7 +2391,7 @@ export default function FeedScreen() {
                     <View key={item.id} style={styles.announcementSheetCard}>
                       <Text style={styles.announcementSheetTitle}>{item.title}</Text>
                       <Text style={styles.announcementSheetMeta}>{item.schedule}</Text>
-                      <Text style={styles.announcementSheetBody}>{item.details}</Text>
+                      <Text style={styles.announcementSheetBody}>{item.details || item.summary}</Text>
                     </View>
                   ))}
                 </ScrollView>
@@ -2491,6 +2401,8 @@ export default function FeedScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {announcementHeader}
+
       <View style={styles.tabContainer}>
         <FlatList
           data={listData}
@@ -2499,14 +2411,12 @@ export default function FeedScreen() {
           contentContainerStyle={styles.feedContent}
           ListEmptyComponent={feedEmptyComponent}
           ListFooterComponent={feedFooterComponent}
-          ListHeaderComponent={announcementHeader}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews
-          initialNumToRender={4}
-          maxToRenderPerBatch={8}
-          windowSize={11}
-          onScroll={handleFeedListScroll}
-          scrollEventThrottle={16}
+          removeClippedSubviews={Platform.OS === 'android'}
+          initialNumToRender={6}
+          maxToRenderPerBatch={6}
+          updateCellsBatchingPeriod={80}
+          windowSize={9}
           refreshing={isFeedRefreshing}
           onRefresh={handleRefresh}
           onEndReached={handleLoadMore}
@@ -2654,6 +2564,120 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
     paddingBottom: 10,
+  },
+  simpleAnnouncementContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
+    backgroundColor: '#F3F6FB',
+  },
+  announcementCard: {
+    borderRadius: 18,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 6,
+  },
+  announcementTouchable: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  simpleAnnouncementBar: {
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  announcementHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  announcementBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  announcementBadgeText: {
+    color: '#0b1224',
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 6,
+    letterSpacing: 0.2,
+  },
+  announcementCountPill: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  announcementCountText: {
+    color: '#E8EEFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  simpleAnnouncementCopy: {
+    flex: 1,
+  },
+  simpleAnnouncementTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#F9FAFB',
+    lineHeight: 22,
+  },
+  simpleAnnouncementText: {
+    fontSize: 13,
+    color: 'rgba(232,238,255,0.92)',
+    marginTop: 6,
+    lineHeight: 19,
+  },
+  announcementMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+    gap: 8,
+  },
+  announcementMetaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  announcementMetaChipText: {
+    color: '#E8EEFF',
+    fontSize: 12.5,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  announcementCtaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  announcementCtaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  announcementCtaText: {
+    fontWeight: '800',
+    fontSize: 13,
+    marginRight: 8,
+  },
+  announcementHint: {
+    color: 'rgba(232,238,255,0.8)',
+    fontSize: 12,
+    fontWeight: '500',
   },
   successBanner: {
     flexDirection: 'row',
