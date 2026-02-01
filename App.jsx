@@ -44,10 +44,7 @@ const Stack = createNativeStackNavigator();
 function AppHeader() {
   const insets = useSafeAreaInsets();
 
-   useEffect( () => {
 
-
-  }, []);
 
 
   return (
@@ -169,7 +166,7 @@ function App() {
     <AppProvider>
       <SafeAreaProvider>
         <SafeAreaView style={{ flex: 1, backgroundColor: '#f6f7fb' }} edges={['top', 'left', 'right']}>
-          <StatusBar barStyle='light-content' backgroundColor="#ffff" translucent={true} />
+          <StatusBar barStyle='light-content' backgroundColor="#2563EB" translucent={true} />
           <NavigationContainer>
             <Stack.Navigator
               screenOptions={{ headerShown: false }}

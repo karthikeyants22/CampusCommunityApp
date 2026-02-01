@@ -100,39 +100,10 @@ const resolveServerHasMore = (payload = {}, currentPage = 1) => {
 
   return undefined;
 };
+const ANNOUNCEMENTS_ENDPOINT = 'announcements';
+const ANNOUNCEMENT_ACCENT_COLORS = ['#38bdf8', '#f97316', '#34d399', '#818cf8', '#f472b6'];
 const ANNOUNCEMENTS = [
-  {
-    id: 'ann-1',
-    title: 'Welcome week starts Friday',
-    summary: 'Tours, mixers, resource fair.',
-    schedule: 'Fri, Oct 18',
-    location: 'Student Hub',
-    tag: 'This week',
-    accentColor: '#38bdf8',
-    ctaLabel: 'View plan',
-  },
-  {
-    id: 'ann-2',
-    title: 'Innovation finals Tuesday',
-    summary: 'Top five teams pitch in the lab.',
-    schedule: 'Tue, Oct 22',
-    location: 'Innovation Lab',
-    tag: 'Spotlight',
-    accentColor: '#f97316',
-    ctaLabel: 'RSVP',
-  },
-  {
-    id: 'ann-3',
-    title: 'Fall club fair Thursday',
-    summary: '60+ clubs on the quad.',
-    schedule: 'Thu, Oct 24',
-    location: 'Central Quad',
-    tag: 'Campus life',
-    accentColor: '#34d399',
-    ctaLabel: 'Preview',
-  },
 ];
-const ANNOUNCEMENT_COUNT = ANNOUNCEMENTS.length;
 const ANNOUNCEMENT_AUTO_INTERVAL = 4500;
 
 const AnimatedIcon = Animated.createAnimatedComponent(Icon);
@@ -360,6 +331,86 @@ const normalizeApiComment = (comment, index = 0, postId = 'post') => {
     createdAt,
     liked,
     author: comment?.user?.fullName || comment?.user?.username || comment?.author || '',
+  };
+};
+
+const formatAnnouncementDate = value => {
+  if (!value) {
+    return '';
+  }
+  const parsed = moment(value);
+  if (!parsed.isValid()) {
+    return typeof value === 'string' ? value : '';
+  }
+  return parsed.format('ddd, MMM D');
+};
+
+const extractAnnouncementList = payload => {
+  if (!payload) {
+    return [];
+  }
+  const data = payload?.data ?? payload?.result ?? payload?.payload ?? payload;
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (Array.isArray(data?.announcements)) {
+    return data.announcements;
+  }
+  if (Array.isArray(data?.items)) {
+    return data.items;
+  }
+  if (Array.isArray(data?.rows)) {
+    return data.rows;
+  }
+  if (Array.isArray(payload?.announcements)) {
+    return payload.announcements;
+  }
+  return [];
+};
+
+const normalizeAnnouncement = (item, index = 0) => {
+  const fallbackId = `ann-${index}`;
+  const safeId = item?.id ?? item?._id ?? item?.announcementId ?? fallbackId;
+  const title = item?.title ?? item?.heading ?? item?.name ?? 'Announcement';
+  const details = item?.details ?? item?.description ?? item?.content ?? item?.body ?? '';
+  const summaryCandidate = item?.summary ?? item?.subtitle ?? item?.shortDescription ?? '';
+  const summary =
+    summaryCandidate ||
+    (typeof details === 'string' ? `${details}`.trim().slice(0, 120) : '');
+  const scheduleRaw =
+    item?.schedule ??
+    item?.date ??
+    item?.startsAt ??
+    item?.startDate ??
+    item?.createdAt ??
+    '';
+  const schedule = formatAnnouncementDate(scheduleRaw);
+  const location =
+    item?.location?.name ??
+    item?.location ??
+    item?.venue ??
+    item?.place ??
+    '';
+  const tag =
+    item?.tag ??
+    item?.category?.name ??
+    item?.type ??
+    '';
+  const accentColor =
+    item?.accentColor ??
+    ANNOUNCEMENT_ACCENT_COLORS[index % ANNOUNCEMENT_ACCENT_COLORS.length];
+  const ctaLabel = item?.ctaLabel ?? item?.cta?.label ?? 'View';
+
+  return {
+    id: String(safeId),
+    title,
+    summary,
+    details,
+    schedule,
+    location,
+    tag,
+    accentColor,
+    ctaLabel,
   };
 };
 
@@ -594,7 +645,7 @@ const MediaCarousel = memo(({ media, onPreviewMedia, onDoubleLike }) => {
 });
 
 // Lightweight comparison helpers keep FlatList rows pure for better virtualization performance.
-const normalizeCount = value => (Number.isFinite(value) ? value : 0);
+const normalizeCount = value => (Number.isFinite(value) ? value :0);
 const normalizeText = value =>
   typeof value === 'string' ? value : value != null ? String(value) : '';
 const normalizeArray = value => (Array.isArray(value) ? value : EMPTY_ARRAY);
@@ -1071,6 +1122,9 @@ export default function FeedScreen() {
   const [feedError, setFeedError] = useState(null);
   const feedRequestRef = useRef(false);
   const isInitialFeed = isFeedLoading && !isFeedRefreshing && posts.length === 0;
+  const [announcements, setAnnouncements] = useState(ANNOUNCEMENTS);
+  const [isAnnouncementsLoading, setIsAnnouncementsLoading] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState(null);
 
   const announcementAnim = useRef(new Animated.Value(1)).current;
   const announcementPulseAnim = useRef(new Animated.Value(0)).current;
@@ -1285,9 +1339,44 @@ export default function FeedScreen() {
     [],
   );
 
+  const fetchAnnouncements = useCallback(async () => {
+    setIsAnnouncementsLoading(true);
+    setAnnouncementsError(null);
+
+    try {
+      const response = await axiosClient.get(ANNOUNCEMENTS_ENDPOINT, {
+        params: { page: 1, limit: 10, includeArchived: false },
+      });
+
+      console.log("RESPONANNN===============",response)
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(response.data?.message || `Announcements request failed (${response.status})`);
+      }
+
+      const payload = response.data ?? {};
+      const list = extractAnnouncementList(payload);
+      const normalized = list.map((item, idx) => normalizeAnnouncement(item, idx));
+      setAnnouncements(normalized);
+    } catch (error) {
+      console.warn('Announcements fetch failed:', error);
+      const apiMessage =
+        error?.response?.data?.message ||
+        error?.data?.message ||
+        error?.message ||
+        'Unable to load announcements right now.';
+      setAnnouncementsError(apiMessage);
+    } finally {
+      setIsAnnouncementsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchFeed({ page: 1 });
   }, [fetchFeed]);
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [fetchAnnouncements]);
 
   useEffect(
     () => () => {
@@ -1335,7 +1424,8 @@ export default function FeedScreen() {
 
   const handleRefresh = useCallback(() => {
     fetchFeed({ page: 1, refreshing: true });
-  }, [fetchFeed]);
+    fetchAnnouncements();
+  }, [fetchAnnouncements, fetchFeed]);
 
   const handleRetryFeed = useCallback(() => {
     fetchFeed({ page: 1 });
@@ -1367,8 +1457,8 @@ export default function FeedScreen() {
   /** swipe to switch announcement */
   const goToAnnouncementIndex = useCallback(
     index => {
-      if (!ANNOUNCEMENT_COUNT) return;
-      const normalizedIndex = ((index % ANNOUNCEMENT_COUNT) + ANNOUNCEMENT_COUNT) % ANNOUNCEMENT_COUNT;
+      if (!announcementCount) return;
+      const normalizedIndex = ((index % announcementCount) + announcementCount) % announcementCount;
 
       if (announcementIndexRef.current === normalizedIndex) return;
 
@@ -1406,7 +1496,7 @@ export default function FeedScreen() {
         ]).start();
       });
     },
-    [announcementContentOpacity, announcementContentTranslate],
+    [announcementContentOpacity, announcementContentTranslate, announcementCount],
   );
 
   /** swipe responder across the banner */
@@ -1419,12 +1509,12 @@ export default function FeedScreen() {
 
   const startAnnouncementAutoCycle = useCallback(() => {
     stopAnnouncementAutoCycle();
-    if (ANNOUNCEMENT_COUNT <= 1) return;
+    if (announcementCount <= 1) return;
 
     announcementAutoCycleRef.current = setInterval(() => {
       goToAnnouncementIndex(announcementIndexRef.current + 1);
     }, ANNOUNCEMENT_AUTO_INTERVAL);
-  }, [goToAnnouncementIndex, stopAnnouncementAutoCycle]);
+  }, [announcementCount, goToAnnouncementIndex, stopAnnouncementAutoCycle]);
 
   useEffect(() => {
     startAnnouncementAutoCycle();
@@ -1434,6 +1524,18 @@ export default function FeedScreen() {
   useEffect(() => {
     announcementIndexRef.current = activeAnnouncementIndex;
   }, [activeAnnouncementIndex]);
+
+  useEffect(() => {
+    if (!announcementCount) {
+      announcementIndexRef.current = 0;
+      setActiveAnnouncementIndex(0);
+      return;
+    }
+    if (activeAnnouncementIndex >= announcementCount) {
+      announcementIndexRef.current = 0;
+      setActiveAnnouncementIndex(0);
+    }
+  }, [activeAnnouncementIndex, announcementCount]);
 
   const announcementsSheetAnimTranslateY = announcementsSheetAnim.interpolate({
     inputRange: [0, 1],
@@ -1490,10 +1592,10 @@ export default function FeedScreen() {
     }).start(({ finished }) => {
       if (finished) setShouldRenderAnnouncement(false);
     });
-  }, [announcementAnim, shouldRenderAnnouncement]);
+  }, [announcementAnim, announcementCount, shouldRenderAnnouncement]);
 
   const showAnnouncement = useCallback(() => {
-    if (!ANNOUNCEMENT_COUNT) return;
+    if (!announcementCount) return;
 
     const run = () => {
       announcementAnim.stopAnimation();
@@ -1687,11 +1789,12 @@ export default function FeedScreen() {
     outputRange: [1, 1.05],
   });
 
-  const hasAnnouncements = ANNOUNCEMENT_COUNT > 0;
-  const activeAnnouncement = hasAnnouncements ? ANNOUNCEMENTS[activeAnnouncementIndex] : null;
+  const announcementCount = announcements.length;
+  const hasAnnouncements = announcementCount > 0;
+  const activeAnnouncement = hasAnnouncements ? announcements[activeAnnouncementIndex] : null;
 
   const openAnnouncementsSheet = useCallback(() => {
-    if (!ANNOUNCEMENT_COUNT) return;
+    if (!announcementCount) return;
 
     setAnnouncementsSheetExpanded(true);
     stopAnnouncementAutoCycle();
@@ -1705,7 +1808,7 @@ export default function FeedScreen() {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
-  }, [announcementsSheetAnim, stopAnnouncementAutoCycle]);
+  }, [announcementCount, announcementsSheetAnim, stopAnnouncementAutoCycle]);
 
   const closeAnnouncementsSheet = useCallback(() => {
     if (!isAnnouncementsSheetVisible) return;
@@ -1735,6 +1838,8 @@ export default function FeedScreen() {
   const updatePost = useCallback((postId, updateFn) => {
     setPosts(prev => prev.map(post => (post.id === postId ? updateFn(post) : post)));
   }, []);
+
+  const pendingLikeRequestsRef = useRef(new Set());
 
   const fetchCommentsForPost = useCallback(
     async (postId, page = 1) => {
@@ -1798,167 +1903,86 @@ export default function FeedScreen() {
     [updatePost],
   );
 
-  // const handleLike = useCallback(
-  //   async postId => {
-  //     let previousSnapshot = null;
-  //     setPosts(prev =>
-  //       prev.map(post => {
-  //         if (post.id !== postId) {
-  //           return post;
-  //         }
-  //         previousSnapshot = post;
-  //         const isLiked = !post.isLiked;
-
-  //         const currentLikesSource = Number.isFinite(post.likeCount)
-  //           ? post.likeCount
-  //           : Number.isFinite(post.likes)
-  //             ? post.likes
-  //             : 0;
-  //         const nextLikes = isLiked ? currentLikesSource + 1 : Math.max(0, currentLikesSource - 1);
-  //         return {
-  //           ...post,
-  //           isLiked,
-  //           viewerHasLiked: isLiked,
-  //           likes: nextLikes,
-  //           likeCount: nextLikes,
-  //         };
-  //       }),
-  //     );
-  //     try {
-  //       const response = await axiosClient.post(`posts/${postId}/like`, { id: postId });
-  //       const isSuccess = response?.status >= 200 && response?.status < 300;
-  //       if (!isSuccess) {
-  //         const message = response?.data?.message || 'Unable to update like right now.';
-  //         throw new Error(message);
-  //       }
-
-  //       const serverState = extractServerLikeState(response?.data);
-  //       if (serverState && (serverState.likes !== undefined || serverState.isLiked !== undefined)) {
-  //         setPosts(prev =>
-  //           prev.map(post => {
-  //             if (post.id !== postId) {
-  //               return post;
-  //             }
-  //             const fallbackLikes = Number.isFinite(post.likeCount)
-  //               ? post.likeCount
-  //               : Number.isFinite(post.likes)
-  //                 ? post.likes
-  //                 : 0;
-  //             const resolvedLikes = coerceNumber(
-  //               serverState.likes !== undefined ? serverState.likes : fallbackLikes,
-  //             );
-  //             const resolvedIsLiked =
-  //               serverState.isLiked !== undefined ? serverState.isLiked : post.isLiked;
-  //             return {
-  //               ...post,
-  //               likes: resolvedLikes,
-  //               likeCount: resolvedLikes,
-  //               isLiked: resolvedIsLiked,
-  //               viewerHasLiked: resolvedIsLiked,
-  //             };
-  //           }),
-  //         );
-  //       }
-  //     } catch (error) {
-  //       console.warn('Like request failed:', error?.message || error);
-  //       if (previousSnapshot) {
-  //         setPosts(prev =>
-  //           prev.map(post => (post.id === postId ? previousSnapshot : post)),
-  //         );
-  //       }
-  //       Alert.alert('Unable to update like', error?.message || 'Please try again in a moment.');
-  //     }
-  //   },
-  //   [],
-  // );
-
-
-
   const handleLike = useCallback(
     async postId => {
-      let previousSnapshot = null;
-      let optimisticIsLiked = false;
+      if (!postId) {
+        return;
+      }
 
-      // ---- OPTIMISTIC UPDATE ----
-      setPosts(prev =>
-        prev.map(post => {
-          if (post.id !== postId) return post;
+      const currentPost = postsRef.current.find(post => post.id === postId);
+      if (!currentPost) {
+        return;
+      }
 
-          previousSnapshot = post;
-          optimisticIsLiked = !post.isLiked;
+      // avoid overlapping like/unlike requests on the same post to keep counts in sync
+      if (pendingLikeRequestsRef.current.has(postId)) {
+        return;
+      }
+      pendingLikeRequestsRef.current.add(postId);
 
-          const currentLikes = Number.isFinite(post.likeCount)
-            ? post.likeCount
-            : Number.isFinite(post.likes)
-              ? post.likes
-              : 0;
+      const wasLiked = Boolean(currentPost.viewerHasLiked ?? currentPost.isLiked);
+      const currentLikes = Number.isFinite(currentPost.likeCount)
+        ? currentPost.likeCount
+        : Number.isFinite(currentPost.likes)
+          ? currentPost.likes
+          : 0;
 
-          const nextLikes = optimisticIsLiked
-            ? currentLikes + 1
-            : Math.max(0, currentLikes - 1);
+      const optimisticIsLiked = !wasLiked;
+      const optimisticLikes = optimisticIsLiked
+        ? currentLikes + 1
+        : Math.max(0, currentLikes - 1);
 
-          return {
-            ...post,
-            isLiked: optimisticIsLiked,
-            viewerHasLiked: optimisticIsLiked,
-            likes: nextLikes,
-            likeCount: nextLikes,
-          };
-        }),
-      );
+      // optimistic UI update
+      updatePost(postId, post => ({
+        ...post,
+        isLiked: optimisticIsLiked,
+        viewerHasLiked: optimisticIsLiked,
+        likes: optimisticLikes,
+        likeCount: optimisticLikes,
+      }));
 
-      // ---- SERVER UPDATE ----
       try {
-        // If optimisticIsLiked = true → user intends to LIKE → POST
-        // If optimisticIsLiked = false → user intends to UNLIKE → DELETE
         const response = optimisticIsLiked
           ? await axiosClient.post(`posts/${postId}/like`)
           : await axiosClient.delete(`posts/${postId}/like`);
 
         const isSuccess = response?.status >= 200 && response?.status < 300;
         if (!isSuccess) {
-          throw new Error(response?.data?.message || "Unable to update like right now.");
+          throw new Error(response?.data?.message || 'Unable to update like right now.');
         }
 
         const serverState = extractServerLikeState(response?.data);
 
-        // ---- RESYNC WITH SERVER ----
-        setPosts(prev =>
-          prev.map(post => {
-            if (post.id !== postId) return post;
+        // resync with server values if provided
+        updatePost(postId, post => {
+          const fallbackLikes = Number.isFinite(post.likeCount)
+            ? post.likeCount
+            : Number.isFinite(post.likes)
+              ? post.likes
+              : optimisticLikes;
 
-            const fallbackLikes = Number.isFinite(post.likeCount)
-              ? post.likeCount
-              : Number.isFinite(post.likes)
-                ? post.likes
-                : 0;
+          const resolvedLikes =
+            serverState?.likes !== undefined ? coerceNumber(serverState.likes) : fallbackLikes;
+          const resolvedIsLiked =
+            typeof serverState?.isLiked === 'boolean' ? serverState.isLiked : optimisticIsLiked;
 
-            const resolvedLikes = serverState?.likes ?? fallbackLikes;
-            const resolvedIsLiked = serverState?.isLiked ?? post.isLiked;
-
-            return {
-              ...post,
-              likes: resolvedLikes,
-              likeCount: resolvedLikes,
-              isLiked: resolvedIsLiked,
-              viewerHasLiked: resolvedIsLiked,
-            };
-          }),
-        );
+          return {
+            ...post,
+            likes: resolvedLikes,
+            likeCount: resolvedLikes,
+            isLiked: resolvedIsLiked,
+            viewerHasLiked: resolvedIsLiked,
+          };
+        });
       } catch (error) {
-        console.warn("Like request failed:", error?.message || error);
-
-        // Rollback on failure
-        if (previousSnapshot) {
-          setPosts(prev =>
-            prev.map(post => (post.id === postId ? previousSnapshot : post)),
-          );
-        }
-
-        Alert.alert("Unable to update like", error?.message || "Please try again.");
+        console.warn('Like request failed:', error?.message || error);
+        updatePost(postId, () => currentPost);
+        Alert.alert('Unable to update like', error?.message || 'Please try again.');
+      } finally {
+        pendingLikeRequestsRef.current.delete(postId);
       }
     },
-    [],
+    [updatePost],
   );
 
   const handleSave = useCallback(
@@ -2249,7 +2273,8 @@ export default function FeedScreen() {
 
   /** ⬇️ this header is now passed into FlatList so it scrolls with content */
   const renderAnnouncementHeader = useCallback(() => {
-    const shouldShowAnnouncements = hasAnnouncements && shouldRenderAnnouncement;
+    const isAnnouncementLoading = isAnnouncementsLoading && !hasAnnouncements;
+    const shouldShowAnnouncements = (hasAnnouncements || isAnnouncementLoading) && shouldRenderAnnouncement;
     const showSuccess = Boolean(uploadSuccessMessage);
 
     if (!shouldShowAnnouncements && !showSuccess) {
@@ -2257,6 +2282,10 @@ export default function FeedScreen() {
     }
 
     const accentColor = activeAnnouncement?.accentColor || '#2563EB';
+    const announcementCountText = isAnnouncementLoading ? 'Loading' : `${announcementCount} live`;
+    const announcementTitle = activeAnnouncement?.title || (isAnnouncementLoading ? 'Fetching announcements...' : 'Campus update');
+    const announcementSummary =
+      activeAnnouncement?.summary || (isAnnouncementLoading ? 'Pulling the latest updates for you.' : '');
 
     return (
       <View style={styles.simpleAnnouncementContainer}>
@@ -2276,58 +2305,86 @@ export default function FeedScreen() {
         ) : null}
 
         {shouldShowAnnouncements ? (
-          <Animated.View style={[styles.announcementCard, { transform: [{ scale: announcementScale }] }]}>
-            <TouchableOpacity activeOpacity={0.9} onPress={openAnnouncementsSheet} style={styles.announcementTouchable}>
+          <Animated.View
+            style={[styles.announcementChipCard, { borderColor: accentColor, transform: [{ scale: announcementScale }] }]}
+          >
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={openAnnouncementsSheet}
+              style={styles.announcementChipTouchable}
+            >
               <LinearGradient
-                colors={[accentColor, '#0b1224']}
+                colors={['#0b1224', '#0f172a']}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.simpleAnnouncementBar}
+                end={{ x: 1, y: 0 }}
+                style={styles.announcementChipBody}
               >
-                <View style={styles.announcementHeaderRow}>
-                  <View style={styles.announcementBadge}>
-                    <MaterialIcons name="campaign" size={16} color="#0b1224" />
-                    <Text style={styles.announcementBadgeText}>{activeAnnouncement?.tag || 'Announcement'}</Text>
-                  </View>
-                  <View style={styles.announcementCountPill}>
-                    <Text style={styles.announcementCountText}>{ANNOUNCEMENT_COUNT} active</Text>
-                  </View>
-                </View>
-
-                <View style={styles.simpleAnnouncementCopy}>
-                  <Text style={styles.simpleAnnouncementTitle} numberOfLines={2}>
-                    {activeAnnouncement?.title || 'Campus update'}
-                  </Text>
-                  {activeAnnouncement?.summary ? (
-                    <Text style={styles.simpleAnnouncementText} numberOfLines={3}>
-                      {activeAnnouncement.summary}
+                <View style={styles.announcementChipLeft}>
+                  <View style={[styles.announcementChipDot, { backgroundColor: accentColor }]} />
+                  <View style={styles.announcementChipCopy}>
+                    <View style={styles.announcementChipTagRow}>
+                      <Text style={styles.announcementChipLabel}>Announcements</Text>
+                      {activeAnnouncement?.tag ? (
+                        <View style={styles.announcementChipTag}>
+                          <MaterialIcons name="campaign" size={14} color="#0b1224" />
+                          <Text style={styles.announcementChipTagText}>{activeAnnouncement.tag}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={styles.announcementChipTitle} numberOfLines={2}>
+                      {announcementTitle}
                     </Text>
-                  ) : null}
+                    {announcementSummary ? (
+                      <Text style={styles.announcementChipSummary} numberOfLines={2}>
+                        {announcementSummary}
+                      </Text>
+                    ) : null}
+                    <View style={styles.announcementChipMetaRow}>
+                      {!isAnnouncementLoading && activeAnnouncement?.schedule ? (
+                        <View style={styles.announcementMetaChip}>
+                          <MaterialIcons name="event" size={14} color="#E8EEFF" />
+                          <Text style={styles.announcementMetaChipText}>{activeAnnouncement.schedule}</Text>
+                        </View>
+                      ) : null}
+                      {!isAnnouncementLoading && activeAnnouncement?.location ? (
+                        <View style={styles.announcementMetaChip}>
+                          <MaterialIcons name="place" size={14} color="#E8EEFF" />
+                          <Text style={styles.announcementMetaChipText}>{activeAnnouncement.location}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
                 </View>
 
-                <View style={styles.announcementMetaRow}>
-                  {activeAnnouncement?.schedule ? (
-                    <View style={styles.announcementMetaChip}>
-                      <MaterialIcons name="event" size={14} color="#E8EEFF" />
-                      <Text style={styles.announcementMetaChipText}>{activeAnnouncement.schedule}</Text>
-                    </View>
-                  ) : null}
-                  {activeAnnouncement?.location ? (
-                    <View style={styles.announcementMetaChip}>
-                      <MaterialIcons name="place" size={14} color="#E8EEFF" />
-                      <Text style={styles.announcementMetaChipText}>{activeAnnouncement.location}</Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                <View style={styles.announcementCtaRow}>
-                  <View style={styles.announcementCtaPill}>
-                    <Text style={[styles.announcementCtaText, { color: accentColor }]}>
+                <View style={styles.announcementChipRight}>
+                  <View style={styles.announcementChipCount}>
+                    <MaterialIcons name="auto-graph" size={16} color="#E8EEFF" />
+                    <Text style={styles.announcementChipCountText}>{announcementCountText}</Text>
+                  </View>
+                  <View style={[styles.announcementChipCta, { backgroundColor: accentColor }]}>
+                    <Text style={styles.announcementChipCtaText}>
                       {activeAnnouncement?.ctaLabel || 'See details'}
                     </Text>
-                    <MaterialIcons name="arrow-forward" size={16} color={accentColor} />
+                    <MaterialIcons name="arrow-forward" size={16} color="#0b1224" />
                   </View>
-                  <Text style={styles.announcementHint}>Tap to view announcements</Text>
+                  <View style={styles.announcementChipDots}>
+                    {isAnnouncementLoading ? (
+                      <ActivityIndicator size="small" color="#E8EEFF" />
+                    ) : (
+                      announcements.map((_, idx) => {
+                        const isActive = idx === activeAnnouncementIndex;
+                        return (
+                          <View
+                            key={`announcement-progress-${idx}`}
+                            style={[
+                              styles.announcementProgressDot,
+                              isActive && [styles.announcementProgressDotActive, { backgroundColor: accentColor }],
+                            ]}
+                          />
+                        );
+                      })
+                    )}
+                  </View>
                 </View>
               </LinearGradient>
             </TouchableOpacity>
@@ -2337,9 +2394,13 @@ export default function FeedScreen() {
     );
   }, [
     activeAnnouncement,
+    activeAnnouncementIndex,
     announcementScale,
+    announcementCount,
+    announcements,
     dismissUploadSuccessMessage,
     hasAnnouncements,
+    isAnnouncementsLoading,
     openAnnouncementsSheet,
     shouldRenderAnnouncement,
     uploadSuccessMessage,
@@ -2380,20 +2441,39 @@ export default function FeedScreen() {
                 <View style={styles.announcementSheetHeader}>
                   <View>
                     <Text style={styles.modalTitle}>Campus announcements</Text>
-                    <Text style={styles.sheetSubtitle}>{ANNOUNCEMENT_COUNT} active updates</Text>
+                    <Text style={styles.sheetSubtitle}>
+                      {isAnnouncementsLoading && !hasAnnouncements
+                        ? 'Loading updates...'
+                        : `${announcementCount} active updates`}
+                    </Text>
                   </View>
                   <TouchableOpacity onPress={closeAnnouncementsSheet}>
                     <MaterialIcons name="close" size={24} color="#1F2937" />
                   </TouchableOpacity>
                 </View>
                 <ScrollView style={styles.announcementSheetList} showsVerticalScrollIndicator={false}>
-                  {ANNOUNCEMENTS.map(item => (
-                    <View key={item.id} style={styles.announcementSheetCard}>
-                      <Text style={styles.announcementSheetTitle}>{item.title}</Text>
-                      <Text style={styles.announcementSheetMeta}>{item.schedule}</Text>
-                      <Text style={styles.announcementSheetBody}>{item.details || item.summary}</Text>
+                  {isAnnouncementsLoading && !hasAnnouncements ? (
+                    <View style={styles.announcementSheetEmpty}>
+                      <ActivityIndicator size="small" color="#2563EB" />
+                      <Text style={styles.announcementSheetEmptyText}>Loading announcements...</Text>
                     </View>
-                  ))}
+                  ) : announcements.length ? (
+                    announcements.map(item => (
+                      <View key={item.id} style={styles.announcementSheetCard}>
+                        <Text style={styles.announcementSheetTitle}>{item.title}</Text>
+                        {item.schedule ? (
+                          <Text style={styles.announcementSheetMeta}>{item.schedule}</Text>
+                        ) : null}
+                        <Text style={styles.announcementSheetBody}>{item.details || item.summary}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.announcementSheetEmpty}>
+                      <Text style={styles.announcementSheetEmptyText}>
+                        {announcementsError || 'No announcements yet.'}
+                      </Text>
+                    </View>
+                  )}
                 </ScrollView>
               </Animated.View>
             </TouchableWithoutFeedback>
@@ -2570,6 +2650,142 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 8,
     backgroundColor: '#F3F6FB',
+  },
+  announcementChipCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
+    backgroundColor: '#0b1224',
+  },
+  announcementChipTouchable: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  announcementChipBody: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  announcementChipLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  announcementChipDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  announcementChipCopy: {
+    flex: 1,
+    gap: 5,
+  },
+  announcementChipTagRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  announcementChipLabel: {
+    color: '#E8EEFF',
+    fontSize: 11,
+    letterSpacing: 0.6,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  announcementChipTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  announcementChipTagText: {
+    color: '#0b1224',
+    fontWeight: '700',
+    fontSize: 11,
+    marginLeft: 5,
+  },
+  announcementChipTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#F9FAFB',
+    lineHeight: 20,
+  },
+  announcementChipSummary: {
+    fontSize: 12.5,
+    color: 'rgba(232,238,255,0.88)',
+    lineHeight: 17,
+  },
+  announcementChipMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  announcementChipRight: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  announcementChipCount: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  announcementChipCountText: {
+    color: '#E8EEFF',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  announcementChipCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  announcementChipCtaText: {
+    color: '#0b1224',
+    fontWeight: '800',
+    fontSize: 11.5,
+    marginRight: 5,
+  },
+  announcementChipDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-end',
+  },
+  announcementProgressDot: {
+    width: 12,
+    height: 3.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  announcementProgressDotActive: {
+    height: 4,
   },
   announcementCard: {
     borderRadius: 18,
@@ -3427,6 +3643,18 @@ marginTop:10,
     maxHeight: '90%',
     paddingBottom: 6,
   },
+  announcementSheetEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  announcementSheetEmptyText: {
+    color: '#667085',
+    fontSize: 13.5,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   announcementSheetCard: {
     backgroundColor: '#F8FAFF',
     borderRadius: 18,
@@ -3590,4 +3818,6 @@ marginTop:10,
     shadowOffset: { width: 0, height: 4 },
   },
 });
+
+
 

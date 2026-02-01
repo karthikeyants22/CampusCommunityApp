@@ -1,6 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
-  ImageBackground,
   FlatList,
   SafeAreaView,
   StyleSheet,
@@ -8,6 +7,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ImageBackground,
+  Platform,
 } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
 
@@ -102,58 +103,65 @@ const campusCoupons = [
   },
 ];
 
+const SPACING = 16;
+const RADIUS = 18;
+
 export default function DealsScreen({ navigation }) {
   const [audience, setAudience] = useState('students');
   const [query, setQuery] = useState('');
 
   const filteredCoupons = useMemo(() => {
-    if (!query.trim()) {
-      return campusCoupons;
-    }
-
+    if (!query.trim()) return campusCoupons;
     const lowered = query.toLowerCase();
     return campusCoupons.filter(
-      (coupon) =>
-        coupon.label.toLowerCase().includes(lowered) ||
-        coupon.subtitle.toLowerCase().includes(lowered),
+      (c) =>
+        c.label.toLowerCase().includes(lowered) ||
+        c.subtitle.toLowerCase().includes(lowered) ||
+        (c.category || '').toLowerCase().includes(lowered),
     );
   }, [query]);
 
-  const listHeader = useMemo(
-    () => (
-      <View>
-        {/* <View style={styles.header}>
-          <View style={styles.avatarBubble}>
-            <Text style={styles.avatarInitial}>A</Text>
+  const listHeader = useMemo(() => {
+    return (
+      <View style={styles.headerWrap}>
+        <View style={styles.topHeader}>
+          <View>
+            <Text style={styles.pageTitle}>Coupons</Text>
+            <Text style={styles.pageSubtitle}>Benefits & offers around campus</Text>
           </View>
-          <Text style={styles.headerTitle}>Coupons &amp; Benefits</Text>
-          <TouchableOpacity style={styles.bellButton} activeOpacity={0.85}>
-            <Feather name="bell" size={20} color="#1E1E1E" />
+
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.85}>
+            <Feather name="bell" size={18} color="#0F172A" />
           </TouchableOpacity>
-        </View> */}
+        </View>
 
         <View style={styles.searchBar}>
-          <Feather name="search" size={18} color="#7D8597" />
+          <Feather name="search" size={18} color="#64748B" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search coupons & benefits"
-            placeholderTextColor="#9AA2B1"
+            placeholder="Search deals, stores, categories"
+            placeholderTextColor="#94A3B8"
             value={query}
             onChangeText={setQuery}
           />
+          {!!query && (
+            <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn} activeOpacity={0.8}>
+              <Feather name="x" size={16} color="#64748B" />
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={styles.toggleGroup}>
+        <View style={styles.segment}>
           {audienceTabs.map((tab) => {
             const active = audience === tab.key;
             return (
               <TouchableOpacity
                 key={tab.key}
-                style={[styles.togglePill, active && styles.togglePillActive]}
+                style={[styles.segmentPill, active && styles.segmentPillActive]}
                 onPress={() => setAudience(tab.key)}
                 activeOpacity={0.9}
               >
-                <Text style={[styles.toggleText, active && styles.toggleTextActive]}>
+                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -161,24 +169,37 @@ export default function DealsScreen({ navigation }) {
           })}
         </View>
 
-        <Text style={styles.sectionHeading}>Your Key Benefits</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Your Key Benefits</Text>
+          <TouchableOpacity activeOpacity={0.8}>
+            <Text style={styles.sectionAction}>See all</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.benefitRow}>
-          {keyBenefits.map((benefit) => (
-            <View key={benefit.id} style={styles.benefitCard}>
-              <View style={[styles.benefitIcon, { backgroundColor: `${benefit.accent}15` }]}>
-                <Feather name={benefit.icon} size={20} color={benefit.accent} />
+          {keyBenefits.map((b) => (
+            <TouchableOpacity key={b.id} style={styles.benefitCard} activeOpacity={0.9}>
+              <View style={styles.benefitTop}>
+                <View style={[styles.benefitIcon, { backgroundColor: `${b.accent}18` }]}>
+                  <Feather name={b.icon} size={18} color={b.accent} />
+                </View>
+                <Feather name="chevron-right" size={18} color="#94A3B8" />
               </View>
-              <Text style={styles.benefitTitle}>{benefit.title}</Text>
-              <Text style={styles.benefitSubtitle}>{benefit.subtitle}</Text>
-            </View>
+              <Text style={styles.benefitTitle}>{b.title}</Text>
+              <Text style={styles.benefitSubtitle}>{b.subtitle}</Text>
+            </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={[styles.sectionHeading, styles.sectionSpacing]}>Campus Coupons</Text>
+        <View style={[styles.sectionHeaderRow, { marginTop: 2 }]}>
+          <Text style={styles.sectionTitle}>Campus Coupons</Text>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{filteredCoupons.length}</Text>
+          </View>
+        </View>
       </View>
-    ),
-    [audience, query],
-  );
+    );
+  }, [audience, query, filteredCoupons.length]);
 
   const keyExtractor = useCallback((item) => item.id, []);
 
@@ -188,35 +209,45 @@ export default function DealsScreen({ navigation }) {
 
     return (
       <TouchableOpacity
-        activeOpacity={0.86}
+        activeOpacity={0.9}
+        style={styles.gridItem}
         onPress={() => navigation?.navigate?.('DiscountDetails', { coupon: item })}
-        style={{width:"70%"}}
       >
         <ImageBackground
           source={{ uri: image }}
           style={styles.couponCard}
           imageStyle={styles.couponImage}
         >
-          <View style={[styles.couponOverlay, { backgroundColor: `${accentColor}50` }]} />
-          <View style={styles.couponContent}>
-            <View style={styles.couponTopRow}>
-              <View style={[styles.couponTag, { backgroundColor: `${accentColor}26` }]}>
-                <Text style={[styles.couponTagText, { color: accentColor }]}>
-                  {category || 'Campus Deal'}
-                </Text>
+          {/* soft overlay for readability */}
+          <View style={styles.darkOverlay} />
+          <View style={[styles.tintOverlay, { backgroundColor: `${accentColor}28` }]} />
+
+          <View style={styles.couponInner}>
+            <View style={styles.couponTop}>
+              <View style={[styles.chip, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
+                <Text style={styles.chipText}>{category || 'Campus Deal'}</Text>
               </View>
-              <Text style={styles.couponMeta}>{expires || 'Just added'}</Text>
+              <View style={styles.pill}>
+                <Text style={styles.pillText}>{expires || 'Just added'}</Text>
+              </View>
             </View>
+
             <View style={styles.couponBottom}>
-              <Text style={styles.couponLabel}>{label}</Text>
-              <Text style={styles.couponSubtitle}>{subtitle}</Text>
-              <View style={styles.couponMetaRow}>
+              <Text style={styles.couponLabel} numberOfLines={1}>
+                {label}
+              </Text>
+              <Text style={styles.couponSubtitle} numberOfLines={1}>
+                {subtitle}
+              </Text>
+
+              <View style={styles.metaRow}>
                 <View style={styles.metaItem}>
-                  <Feather name="map-pin" size={12} color="#FFFFFF" />
+                  <Feather name="map-pin" size={12} color="#E2E8F0" />
                   <Text style={styles.metaText}>{distance || 'Nearby'}</Text>
                 </View>
+
                 <View style={styles.metaItem}>
-                  <Feather name="arrow-right" size={12} color="#FFFFFF" />
+                  <Feather name="arrow-right" size={12} color="#E2E8F0" />
                   <Text style={styles.metaText}>Details</Text>
                 </View>
               </View>
@@ -234,14 +265,18 @@ export default function DealsScreen({ navigation }) {
         renderItem={renderCoupon}
         keyExtractor={keyExtractor}
         numColumns={2}
-        columnWrapperStyle={styles.couponRow}
+        columnWrapperStyle={styles.row}
         ListHeaderComponent={listHeader}
         ListFooterComponent={
           <TouchableOpacity style={styles.discoverCard} activeOpacity={0.9}>
             <View style={styles.discoverIcon}>
-              <Feather name="plus" size={22} color="#7D8597" />
+              <Feather name="plus" size={18} color="#64748B" />
             </View>
-            <Text style={styles.discoverText}>Discover More!</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.discoverText}>Discover more benefits</Text>
+              <Text style={styles.discoverSub}>New deals are added every week</Text>
+            </View>
+            <Feather name="chevron-right" size={18} color="#94A3B8" />
           </TouchableOpacity>
         }
         contentContainerStyle={styles.container}
@@ -254,206 +289,247 @@ export default function DealsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#E9EDF4',
+    backgroundColor: '#F6F7FB',
   },
   container: {
-    paddingHorizontal: 16,
-    paddingBottom: 32,
-    paddingTop: 10,
+    paddingHorizontal: SPACING,
+    paddingBottom: 28,
   },
-  header: {
+
+  headerWrap: {
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
+  topHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
-  avatarBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#F7DAC3',
-    justifyContent: 'center',
-    alignItems: 'center',
+  pageTitle: {
+    fontSize: 26,
+    fontWeight: Platform.select({ ios: '800', android: '800' }),
+    color: '#0F172A',
+    letterSpacing: -0.3,
   },
-  avatarInitial: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2C2C2C',
+  pageSubtitle: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2530',
-  },
-  bellButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  iconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#E8EDF6',
   },
+
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F4F6FB',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     paddingHorizontal: 14,
-    height: 46,
+    height: 48,
     borderWidth: 1,
-    borderColor: '#E2E6EE',
+    borderColor: '#E8EDF6',
     marginBottom: 12,
   },
   searchInput: {
     flex: 1,
     marginLeft: 10,
     fontSize: 14,
-    color: '#1F2430',
-  },
-  toggleGroup: {
-    flexDirection: 'row',
-    backgroundColor: '#E8EAF2',
-    borderRadius: 14,
-    padding: 4,
-    marginBottom: 18,
-  },
-  togglePill: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  togglePillActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  toggleText: {
-    fontSize: 14,
-    color: '#7D8597',
+    color: '#0F172A',
     fontWeight: '600',
   },
-  toggleTextActive: {
-    color: '#1F2430',
+  clearBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sectionHeading: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1F2530',
-    marginBottom: 12,
+
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF2F8',
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 14,
   },
-  sectionSpacing: {
-    marginTop: 8,
+  segmentPill: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
+  segmentPillActive: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDF6',
+  },
+  segmentText: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '800',
+  },
+  segmentTextActive: {
+    color: '#0F172A',
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#0F172A',
+    letterSpacing: -0.2,
+  },
+  sectionAction: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#2563EB',
+  },
+  badge: {
+    minWidth: 28,
+    paddingHorizontal: 10,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontWeight: '900',
+    fontSize: 12,
+  },
+
   benefitRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 10,
   },
   benefitCard: {
     width: '48%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 14,
-    shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 3,
+    borderRadius: RADIUS,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E8EDF6',
+  },
+  benefitTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   benefitIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
+    borderRadius: 14,
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'center',
   },
   benefitTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#161B26',
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0F172A',
   },
   benefitSubtitle: {
     marginTop: 4,
     fontSize: 12,
-    color: '#7D8597',
+    color: '#64748B',
+    fontWeight: '600',
   },
-  couponRow: {
+
+  row: {
     justifyContent: 'space-between',
-    marginBottom: 12,
+  },
+  gridItem: {
+    width: '48%',
+    marginBottom: 14,
   },
   couponCard: {
-    width: '70%',
-    height: 200,
-    borderRadius: 18,
+    width: '100%',
+    height: 208,
+    borderRadius: RADIUS,
     overflow: 'hidden',
     backgroundColor: '#E5E7EB',
-    marginBottom: 12,
   },
   couponImage: {
-    borderRadius: 18,
+    borderRadius: RADIUS,
     resizeMode: 'cover',
   },
-  couponOverlay: {
+  darkOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: 'rgba(2, 6, 23, 0.26)',
   },
-  couponContent: {
+  tintOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  couponInner: {
     flex: 1,
+    padding: 12,
     justifyContent: 'space-between',
-    padding: 14,
   },
-  couponLabel: {
-    fontSize: 22,
-    fontWeight: '800',
+
+  couponTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  chip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  chipText: {
     color: '#FFFFFF',
-    letterSpacing: 0.2,
+    fontSize: 11,
+    fontWeight: '900',
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.22)',
+  },
+  pillText: {
+    color: '#E2E8F0',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  couponBottom: {},
+  couponLabel: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
   },
   couponSubtitle: {
     marginTop: 4,
-    fontSize: 13,
-    color: '#F1F5F9',
-    fontWeight: '600',
-  },
-  couponTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  couponTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  couponTagText: {
-    fontSize: 11,
+    fontSize: 12.5,
+    color: '#E2E8F0',
     fontWeight: '700',
   },
-  couponMeta: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#F8FAFC',
-  },
-  couponBottom: {
-    marginTop: 'auto',
-  },
-  couponMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  metaRow: {
     marginTop: 10,
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   metaItem: {
     flexDirection: 'row',
@@ -462,33 +538,38 @@ const styles = StyleSheet.create({
   metaText: {
     marginLeft: 6,
     fontSize: 12,
-    color: '#F8FAFC',
-    fontWeight: '600',
+    color: '#E2E8F0',
+    fontWeight: '800',
   },
+
   discoverCard: {
-    marginTop: 16,
-    backgroundColor: '#EEF0F6',
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    alignItems: 'center',
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: RADIUS,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E8EDF6',
     flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
   },
   discoverIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#CBD2E1',
-    justifyContent: 'center',
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
     alignItems: 'center',
-    marginRight: 10,
+    justifyContent: 'center',
   },
   discoverText: {
-    fontSize: 16,
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  discoverSub: {
+    marginTop: 2,
+    fontSize: 12,
     fontWeight: '700',
-    color: '#6E7688',
-    marginLeft: 8,
+    color: '#64748B',
   },
 });
