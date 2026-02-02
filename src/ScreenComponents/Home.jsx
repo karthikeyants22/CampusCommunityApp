@@ -932,7 +932,8 @@ const PostCard = memo(
             <Image source={{ uri: item.profileImage }} style={styles.profileImage} />
           ) : (
             <View style={styles.profilePlaceholder}>
-              <Text style={styles.initials}>{initials}</Text>
+              <Text onPress={()=>navigation.navigate("UserProfileInfo")} 
+              style={styles.initials}>{initials}</Text>
             </View>
           )}
 

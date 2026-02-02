@@ -244,6 +244,101 @@ console.log("final",batchRes);
     return response;
   },
 
+  getUsersList: async () => {
+    const res = await axiosClient.get("users/me");
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load users",
+      status: res.status,
+    };
+  },
+
+  getFollowers: async (userId, page = 1, limit = 10) => {
+    const res = await axiosClient.get(`users/${userId}/followers`, {
+
+      params: { page, limit },
+    });
+
+    console.log("RESPONSEFOLLOWERS",res)
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load followers",
+      status: res.status,
+    };
+  },
+
+  getFollowing: async (userId, page = 1, limit = 10) => {
+
+    const res = await axiosClient.get(`users/${userId}/following`, {
+      params: { page, limit },
+    });
+            console.log("RESPONSEFOLLOWING",res)
+
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load following",
+      status: res.status,
+    };
+  },
+
+  updateAvatar: async (asset) => {
+
+    console.log("SSSSSSSSSSS",asset)
+    if (!asset?.uri) {
+      return {
+        isSuccess: false,
+        data: null,
+        message: "Missing image data",
+        status: 0,
+      };
+    }
+
+    const guessFileName = (uri) => {
+      if (!uri) return `avatar_${Date.now()}.jpg`;
+      const cleanUri = String(uri).split("?")[0];
+      const parts = cleanUri.split("/");
+      const last = parts[parts.length - 1];
+      return last && last.includes(".") ? last : `avatar_${Date.now()}.jpg`;
+    };
+
+    const form = new FormData();
+    form.append("avatar", {
+      uri: asset.uri,
+      name: asset.fileName || guessFileName(asset.uri),
+      type: asset.type || "image/jpeg",
+    });
+
+    const res = await axiosClient.post(
+      "https://lifestyle-facilitate-delivers-rough.trycloudflare.com/api/users/me/avatar",
+      form,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    );
+
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to update avatar",
+      status: res.status,
+    };
+  },
+
   logout: async () => {
     await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);
   },

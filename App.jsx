@@ -34,6 +34,8 @@ import LoginScreen from './src/SignUpFlow/LoginScreen';
 import SplashScreen from './src/SignUpFlow/SplashScreen';
 import ProfileInfo from './src/ScreenComponents/ProfileInfo';
 import authService from "./src/Authentication/authService";
+import FollowersList from "./src/ProfileDetails/FollowersList";
+import UserProfileInfo from "./src/ProfileDetails/UserProfile";
 
 const LOGO_IMAGE = require("./src/Assets/OnBoardImg.png");
 const APP_NAME = appConfig.displayName || appConfig.name || 'App';
@@ -211,6 +213,26 @@ function App() {
                 }}
               />
 
+               <Stack.Screen
+                name="FollowersList"
+                component={FollowersList}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
+
+
+     <Stack.Screen
+                name="UserProfileInfo"
+                component={UserProfileInfo}
+                options={{
+                  //  title: 'Upload',
+                  animationEnabled: true,
+                  headerShown: false,
+                }}
+              />
               <Stack.Screen
                 name="LoginScreen"
                 component={LoginScreen}

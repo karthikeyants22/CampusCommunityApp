@@ -25,6 +25,7 @@ export default function ProfileSetupScreen() {
   const [refError, setRefError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [activeTab, setActiveTab] = useState("basic");
 
   const [fullName, setFullName] = useState("");
   const [userName, setUserName] = useState("");
@@ -39,6 +40,16 @@ export default function ProfileSetupScreen() {
 
   const isStudent =
     appData.role === 3 || appData.role === "student" || appData.role === "STUDENT";
+
+  const tabs = [
+    { key: "basic", label: "Basic", icon: "person-outline" },
+    {
+      key: "details",
+      label: isStudent ? "Academic" : "Professional",
+      icon: isStudent ? "school-outline" : "briefcase-outline",
+    },
+    { key: "review", label: "Review", icon: "checkmark-done-outline" },
+  ];
 
   const fetchReferenceData = async () => {
     if (appData.role === undefined || appData.role === null || appData.role === "") {
@@ -217,208 +228,308 @@ export default function ProfileSetupScreen() {
             </View>
           ) : null}
 
-          <Text style={styles.sectionTitle}>Basic info</Text>
-          <View style={styles.fieldGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Full name</Text>
-              <Text style={styles.labelHint}>As per records</Text>
-            </View>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Enter your full name"
-              placeholderTextColor="#9da1b9"
-              value={fullName}
-              onChangeText={setFullName}
-            />
-            {errors.fullName ? <Text style={styles.errorText}>{errors.fullName}</Text> : null}
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Username</Text>
-              <Text style={styles.labelHint}>Visible to peers</Text>
-            </View>
-            <TextInput
-              style={styles.textInput}
-              placeholder="e.g. karthi_raj"
-              placeholderTextColor="#9da1b9"
-              value={userName}
-              onChangeText={setUserName}
-              autoCapitalize="none"
-            />
-            {errors.userName ? <Text style={styles.errorText}>{errors.userName}</Text> : null}
-          </View>
-
-          <View style={styles.fieldGroup}>
-            <View style={styles.labelRow}>
-              <Text style={styles.label}>Gender</Text>
-              <Text style={styles.labelHint}>Pick one</Text>
-            </View>
-            <View style={styles.choiceRow}>
-              {['Male', 'Female', 'Other'].map((option) => (
+          <View style={styles.tabsRow}>
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
                 <TouchableOpacity
-                  key={option}
-                  style={[
-                    styles.choiceChip,
-                    gender === option && styles.choiceChipSelected,
-                  ]}
-                  onPress={() => setGender(option)}
+                  key={tab.key}
+                  style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                  onPress={() => setActiveTab(tab.key)}
                 >
+                  <Ionicons
+                    name={tab.icon}
+                    size={16}
+                    color={isActive ? "#fff" : "#5b4ce2"}
+                  />
                   <Text
-                    style={[
-                      styles.choiceChipText,
-                      gender === option && styles.choiceChipTextSelected,
-                    ]}
+                    style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}
                   >
-                    {option}
+                    {tab.label}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              );
+            })}
           </View>
 
-          <Text style={styles.sectionTitle}>
-            {isStudent ? "Academic details" : "Professional details"}
-          </Text>
-
-          {isStudent ? (
+          {activeTab === "basic" ? (
             <>
+              <Text style={styles.sectionTitle}>Basic info</Text>
               <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Degree</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.placeholderStyle}
-                  selectedTextStyle={styles.selectedTextStyle}
-                  data={degrees}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select degree"
-                  value={degreeId}
-                  onChange={(item) => setDegreeId(item.value)}
-                  disable={refLoading || degrees.length === 0}
-                />
-                {errors.degreeId ? (
-                  <Text style={styles.errorText}>{errors.degreeId}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Department</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.placeholderStyle}
-                  selectedTextStyle={styles.selectedTextStyle}
-                  data={departments}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select department"
-                  value={departmentId}
-                  onChange={(item) => setDepartmentId(item.value)}
-                  disable={refLoading || departments.length === 0}
-                />
-                {errors.departmentId ? (
-                  <Text style={styles.errorText}>{errors.departmentId}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.inlineFields}>
-                <View style={[styles.fieldGroup, styles.inlineField]}>
-                  <Text style={styles.label}>Year of joining</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="2024"
-                    placeholderTextColor="#9da1b9"
-                    value={year}
-                    onChangeText={setYear}
-                    keyboardType="numeric"
-                    maxLength={4}
-                  />
-                  {errors.year ? <Text style={styles.errorText}>{errors.year}</Text> : null}
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Full name</Text>
+                  <Text style={styles.labelHint}>As per records</Text>
                 </View>
-                <View style={[styles.fieldGroup, styles.inlineField]}>
-                  <Text style={styles.label}>Student ID</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Campus ID"
-                    placeholderTextColor="#9da1b9"
-                    value={studentId}
-                    onChangeText={setStudentId}
-                    autoCapitalize="characters"
-                  />
-                  {errors.studentId ? (
-                    <Text style={styles.errorText}>{errors.studentId}</Text>
-                  ) : null}
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Department</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.placeholderStyle}
-                  selectedTextStyle={styles.selectedTextStyle}
-                  data={departments}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select department"
-                  value={departmentId}
-                  onChange={(item) => setDepartmentId(item.value)}
-                  disable={refLoading || departments.length === 0}
-                />
-                {errors.departmentId ? (
-                  <Text style={styles.errorText}>{errors.departmentId}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Designation</Text>
-                <Dropdown
-                  style={styles.dropdown}
-                  placeholderStyle={styles.placeholderStyle}
-                  selectedTextStyle={styles.selectedTextStyle}
-                  data={designations}
-                  labelField="label"
-                  valueField="value"
-                  placeholder="Select designation"
-                  value={designationId}
-                  onChange={(item) => setDesignationId(item.value)}
-                  disable={refLoading || designations.length === 0}
-                />
-                {errors.designationId ? (
-                  <Text style={styles.errorText}>{errors.designationId}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.fieldGroup}>
-                <Text style={styles.label}>Staff ID</Text>
                 <TextInput
                   style={styles.textInput}
-                  placeholder="Faculty ID"
+                  placeholder="Enter your full name"
                   placeholderTextColor="#9da1b9"
-                  value={staffId}
-                  onChangeText={setStaffId}
-                  autoCapitalize="characters"
+                  value={fullName}
+                  onChangeText={setFullName}
                 />
-                {errors.staffId ? <Text style={styles.errorText}>{errors.staffId}</Text> : null}
+                {errors.fullName ? (
+                  <Text style={styles.errorText}>{errors.fullName}</Text>
+                ) : null}
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Username</Text>
+                  <Text style={styles.labelHint}>Visible to peers</Text>
+                </View>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. karthi_raj"
+                  placeholderTextColor="#9da1b9"
+                  value={userName}
+                  onChangeText={setUserName}
+                  autoCapitalize="none"
+                />
+                {errors.userName ? (
+                  <Text style={styles.errorText}>{errors.userName}</Text>
+                ) : null}
+              </View>
+
+              <View style={styles.fieldGroup}>
+                <View style={styles.labelRow}>
+                  <Text style={styles.label}>Gender</Text>
+                  <Text style={styles.labelHint}>Pick one</Text>
+                </View>
+                <View style={styles.choiceRow}>
+                  {["Male", "Female", "Other"].map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.choiceChip,
+                        gender === option && styles.choiceChipSelected,
+                      ]}
+                      onPress={() => setGender(option)}
+                    >
+                      <Text
+                        style={[
+                          styles.choiceChipText,
+                          gender === option && styles.choiceChipTextSelected,
+                        ]}
+                      >
+                        {option}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             </>
-          )}
+          ) : null}
 
-          <TouchableOpacity
-            style={[
-              styles.primaryButton,
-              (refLoading || submitting) && styles.primaryButtonDisabled,
-            ]}
-            onPress={handleSubmit}
-            disabled={refLoading || submitting}
-          >
-            <Text style={styles.primaryButtonText}>
-              {submitting ? "Submitting..." : "Save & continue"}
-            </Text>
-            <Ionicons name="arrow-forward" size={18} color="#fff" />
-          </TouchableOpacity>
+          {activeTab === "details" ? (
+            <>
+              <Text style={styles.sectionTitle}>
+                {isStudent ? "Academic details" : "Professional details"}
+              </Text>
+
+              {isStudent ? (
+                <>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Degree</Text>
+                    <Dropdown
+                      style={styles.dropdown}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={degrees}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Select degree"
+                      value={degreeId}
+                      onChange={(item) => setDegreeId(item.value)}
+                      disable={refLoading || degrees.length === 0}
+                    />
+                    {errors.degreeId ? (
+                      <Text style={styles.errorText}>{errors.degreeId}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Department</Text>
+                    <Dropdown
+                      style={styles.dropdown}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={departments}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Select department"
+                      value={departmentId}
+                      onChange={(item) => setDepartmentId(item.value)}
+                      disable={refLoading || departments.length === 0}
+                    />
+                    {errors.departmentId ? (
+                      <Text style={styles.errorText}>{errors.departmentId}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.inlineFields}>
+                    <View style={[styles.fieldGroup, styles.inlineField]}>
+                      <Text style={styles.label}>Year of joining</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="2024"
+                        placeholderTextColor="#9da1b9"
+                        value={year}
+                        onChangeText={setYear}
+                        keyboardType="numeric"
+                        maxLength={4}
+                      />
+                      {errors.year ? (
+                        <Text style={styles.errorText}>{errors.year}</Text>
+                      ) : null}
+                    </View>
+                    <View style={[styles.fieldGroup, styles.inlineField]}>
+                      <Text style={styles.label}>Student ID</Text>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="Campus ID"
+                        placeholderTextColor="#9da1b9"
+                        value={studentId}
+                        onChangeText={setStudentId}
+                        autoCapitalize="characters"
+                      />
+                      {errors.studentId ? (
+                        <Text style={styles.errorText}>{errors.studentId}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Department</Text>
+                    <Dropdown
+                      style={styles.dropdown}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={departments}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Select department"
+                      value={departmentId}
+                      onChange={(item) => setDepartmentId(item.value)}
+                      disable={refLoading || departments.length === 0}
+                    />
+                    {errors.departmentId ? (
+                      <Text style={styles.errorText}>{errors.departmentId}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Designation</Text>
+                    <Dropdown
+                      style={styles.dropdown}
+                      placeholderStyle={styles.placeholderStyle}
+                      selectedTextStyle={styles.selectedTextStyle}
+                      data={designations}
+                      labelField="label"
+                      valueField="value"
+                      placeholder="Select designation"
+                      value={designationId}
+                      onChange={(item) => setDesignationId(item.value)}
+                      disable={refLoading || designations.length === 0}
+                    />
+                    {errors.designationId ? (
+                      <Text style={styles.errorText}>{errors.designationId}</Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.fieldGroup}>
+                    <Text style={styles.label}>Staff ID</Text>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="Faculty ID"
+                      placeholderTextColor="#9da1b9"
+                      value={staffId}
+                      onChangeText={setStaffId}
+                      autoCapitalize="characters"
+                    />
+                    {errors.staffId ? (
+                      <Text style={styles.errorText}>{errors.staffId}</Text>
+                    ) : null}
+                  </View>
+                </>
+              )}
+            </>
+          ) : null}
+
+          {activeTab === "review" ? (
+            <>
+              <Text style={styles.sectionTitle}>Review & submit</Text>
+              <Text style={styles.reviewHint}>
+                Double-check your details. Use the tabs to edit if needed.
+              </Text>
+
+              <View style={styles.reviewCard}>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Full name</Text>
+                  <Text style={styles.reviewValue}>{fullName || "—"}</Text>
+                </View>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Username</Text>
+                  <Text style={styles.reviewValue}>{userName || "—"}</Text>
+                </View>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Gender</Text>
+                  <Text style={styles.reviewValue}>{gender || "—"}</Text>
+                </View>
+              </View>
+
+              <View style={styles.reviewCard}>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>
+                    {isStudent ? "Degree" : "Designation"}
+                  </Text>
+                  <Text style={styles.reviewValue}>
+                    {isStudent
+                      ? degrees.find((d) => d.value === degreeId)?.label || "—"
+                      : designations.find((d) => d.value === designationId)?.label || "—"}
+                  </Text>
+                </View>
+                <View style={styles.reviewRow}>
+                  <Text style={styles.reviewLabel}>Department</Text>
+                  <Text style={styles.reviewValue}>
+                    {departments.find((d) => d.value === departmentId)?.label || "—"}
+                  </Text>
+                </View>
+                {isStudent ? (
+                  <>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Year of joining</Text>
+                      <Text style={styles.reviewValue}>{year || "—"}</Text>
+                    </View>
+                    <View style={styles.reviewRow}>
+                      <Text style={styles.reviewLabel}>Student ID</Text>
+                      <Text style={styles.reviewValue}>{studentId || "—"}</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.reviewRow}>
+                    <Text style={styles.reviewLabel}>Staff ID</Text>
+                    <Text style={styles.reviewValue}>{staffId || "—"}</Text>
+                  </View>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  (refLoading || submitting) && styles.primaryButtonDisabled,
+                ]}
+                onPress={handleSubmit}
+                disabled={refLoading || submitting}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {submitting ? "Submitting..." : "Save & continue"}
+                </Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
+              </TouchableOpacity>
+            </>
+          ) : null}
         </View>
       </ScrollView>
     </View>
@@ -483,6 +594,35 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 6,
   },
+  tabsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f2f1ff",
+    borderRadius: 18,
+    padding: 6,
+    gap: 8,
+    marginBottom: 18,
+  },
+  tabButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "transparent",
+  },
+  tabButtonActive: {
+    backgroundColor: "#5b4ce2",
+    shadowColor: "rgba(91, 76, 226, 0.35)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.6,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  tabButtonText: { fontSize: 12, fontWeight: "600", color: "#5b4ce2" },
+  tabButtonTextActive: { color: "#fff" },
   inlineError: {
     backgroundColor: "#ffe9e9",
     padding: 12,
@@ -565,6 +705,27 @@ const styles = StyleSheet.create({
   selectedTextStyle: { fontSize: 15, color: "#1d1b2f" },
   inlineFields: { flexDirection: "row", gap: 12 },
   inlineField: { flex: 1 },
+  reviewHint: {
+    color: "#7a7f9c",
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  reviewCard: {
+    backgroundColor: "#f7f8ff",
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#ecebff",
+  },
+  reviewRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  reviewLabel: { color: "#6a6f8b", fontSize: 12, fontWeight: "600" },
+  reviewValue: { color: "#1c1b2f", fontSize: 14, fontWeight: "600" },
   primaryButton: {
     marginTop: 28,
     backgroundColor: "#1f1fb8",

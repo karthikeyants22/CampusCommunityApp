@@ -26,7 +26,7 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 const AVATAR_ORIGIN = "https://lifestyle-facilitate-delivers-rough.trycloudflare.com";
 const ANDROID_13 = 33;
 
-const ProfileInfo = () => {
+const UserProfileInfo = () => {
   const navigation = useNavigation();
   const { appData } = useAppContext();
   const [activeTab, setActiveTab] = useState("Posts");
@@ -1041,4 +1041,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ProfileInfo;
+export default UserProfileInfo;
