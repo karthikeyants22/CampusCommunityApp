@@ -32,6 +32,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 import axiosClient, { ACCESS_TOKEN_KEY } from '../Authentication/axiosClient';
+import authService from '../Authentication/authService';
 import { resolveMediaUrlFromPayload } from '../Common/mediaUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -203,6 +204,7 @@ const normalizeApiPost = (post, index = 0) => {
   const detail = body;
   const metrics = post?.metrics || {};
   const viewer = post?.viewerState || {};
+  const author = post?.user || post?.author || post?.owner || {};
   const hashtags = Array.isArray(post?.hashtags) ? post.hashtags.filter(Boolean) : [];
   const rawMedia = Array.isArray(post?.media) ? post.media : [];
   const rawAttachments = Array.isArray(post?.attachments) ? post.attachments : [];
@@ -277,9 +279,19 @@ const normalizeApiPost = (post, index = 0) => {
 
   return {
     id: String(safeId),
-    name: post?.user?.fullName || post?.user?.username || 'Community member',
-    username: post?.user?.username || '',
-    profileImage: post?.user?.avatarUrl || post?.user?.profileImage || null,
+    name: author?.fullName || author?.username || 'Community member',
+    username: author?.username || '',
+    profileImage: author?.avatarUrl || author?.profileImage || null,
+    userId: author?.id ?? author?._id ?? author?.userId ?? post?.userId ?? null,
+    isFollowing: Boolean(
+      author?.isFollowing ??
+        author?.viewerFollowing ??
+        author?.following ??
+        post?.viewerFollowing ??
+        viewer?.isFollowing ??
+        viewer?.viewerFollowing ??
+        false,
+    ),
     title: headline.length > 140 ? `${headline.slice(0, 140).trim()}...` : headline,
     content: detail,
     rawContent,
@@ -701,7 +713,9 @@ const arePostCardPropsEqual = (prevProps, nextProps) => {
     prevProps.onSave !== nextProps.onSave ||
     prevProps.onCommentPress !== nextProps.onCommentPress ||
     prevProps.onPreviewMedia !== nextProps.onPreviewMedia ||
-    prevProps.onRepost !== nextProps.onRepost
+    prevProps.onRepost !== nextProps.onRepost ||
+    prevProps.onToggleFollow !== nextProps.onToggleFollow ||
+    prevProps.isFollowLoading !== nextProps.isFollowLoading
   ) {
     return false;
   }
@@ -725,6 +739,7 @@ const arePostCardPropsEqual = (prevProps, nextProps) => {
     Boolean(prevItem.isLiked) !== Boolean(nextItem.isLiked) ||
     Boolean(prevItem.viewerHasLiked) !== Boolean(nextItem.viewerHasLiked) ||
     Boolean(prevItem.isSaved) !== Boolean(nextItem.isSaved) ||
+    Boolean(prevItem.isFollowing) !== Boolean(nextItem.isFollowing) ||
     Boolean(prevItem.isReposted) !== Boolean(nextItem.isReposted) ||
     normalizeCount(prevItem.likes) !== normalizeCount(nextItem.likes) ||
     normalizeCount(prevItem.commentsCount) !== normalizeCount(nextItem.commentsCount) ||
@@ -748,7 +763,16 @@ const arePostCardPropsEqual = (prevProps, nextProps) => {
 };
 
 const PostCard = memo(
-  ({ item, onLike, onSave, onCommentPress, onPreviewMedia, onRepost }) => {
+  ({
+    item,
+    onLike,
+    onSave,
+    onCommentPress,
+    onPreviewMedia,
+    onRepost,
+    onToggleFollow,
+    isFollowLoading,
+  }) => {
     const authorName = item?.name || 'Community member';
     const timestamp = item?.time || 'Just now';
     const title = item?.title || '';
@@ -776,6 +800,8 @@ const PostCard = memo(
     );
 
     const userMetaLine = item?.username ? `@${item.username}` : item?.role || '';
+    const isFollowing = Boolean(item?.isFollowing);
+    const canFollow = Boolean(item?.userId);
     const runActivateAnimation = useCallback(() => {
       repostScale.stopAnimation();
       repostRotation.stopAnimation();
@@ -925,11 +951,15 @@ const PostCard = memo(
       onLike(item.id);
     }, [item.id, item.viewerHasLiked, onLike, runLikeAnimation]);
 
+    const handleFollowPress = useCallback(() => {
+      onToggleFollow?.(item);
+    }, [item, onToggleFollow]);
+
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           {item.profileImage ? (
-            <Image source={{ uri: item.profileImage }} style={styles.profileImage} />
+            <Image source={{ uri: "https://dealtime-best-illustrated-preparation.trycloudflare.com"+item.profileImage }} style={styles.profileImage} />
           ) : (
             <View style={styles.profilePlaceholder}>
               <Text onPress={()=>navigation.navigate("UserProfileInfo")} 
@@ -943,8 +973,25 @@ const PostCard = memo(
             <Text style={styles.timestamp}>{timestamp}</Text>
           </View>
 
-          <TouchableOpacity style={styles.moreButton} onPress={handleLogout}>
+          {/* <TouchableOpacity style={styles.moreButton} onPress={handleLogout}>
             <Icon name="more-horizontal" size={22} color="#475467" />
+          </TouchableOpacity> */}
+          <TouchableOpacity
+            style={[
+              styles.button,
+              isFollowing && styles.buttonActive,
+              !canFollow && styles.buttonDisabled,
+            ]}
+            onPress={handleFollowPress}
+            disabled={!canFollow || isFollowLoading}
+          >
+            {isFollowLoading ? (
+              <ActivityIndicator size="small" color={isFollowing ? '#ffffff' : '#2563EB'} />
+            ) : (
+              <Text style={[styles.buttonText, isFollowing && styles.buttonTextActive]}>
+                {isFollowing ? 'Following' : 'Follow'}
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -1115,6 +1162,7 @@ export default function FeedScreen() {
   const [searchText, setSearchText] = useState('');
   const [posts, setPosts] = useState([]);
   const postsRef = useRef(posts);
+  const [followLoadingByUser, setFollowLoadingByUser] = useState({});
   const [pagination, setPagination] = useState({ page: 1, limit: FEED_PAGE_SIZE, count: 0 });
   const [hasMore, setHasMore] = useState(true);
   const [isFeedLoading, setIsFeedLoading] = useState(true);
@@ -1840,6 +1888,57 @@ export default function FeedScreen() {
     setPosts(prev => prev.map(post => (post.id === postId ? updateFn(post) : post)));
   }, []);
 
+  const updateFollowForUser = useCallback((userId, isFollowing) => {
+    if (!userId) return;
+    setPosts(prev =>
+      prev.map(post =>
+        post.userId === userId ? { ...post, isFollowing } : post,
+      ),
+    );
+  }, []);
+
+  const handleToggleFollow = useCallback(
+    async post => {
+      const userId = post?.userId;
+      if (!userId) {
+        return;
+      }
+      if (followLoadingByUser[userId]) {
+        return;
+      }
+
+      const shouldFollow = !post?.isFollowing;
+      setFollowLoadingByUser(prev => ({ ...prev, [userId]: true }));
+
+      try {
+        const res = shouldFollow
+          ? await authService.followUser(userId)
+          : await authService.unfollowUser(userId);
+
+        if (res?.isSuccess) {
+          updateFollowForUser(userId, shouldFollow);
+        } else {
+          const message = res?.message || 'Unable to update follow status.';
+          if (Platform.OS === 'android') {
+            ToastAndroid.show(message, ToastAndroid.SHORT);
+          } else {
+            Alert.alert('Follow', message);
+          }
+        }
+      } catch (error) {
+        const message = error?.message || 'Unable to update follow status.';
+        if (Platform.OS === 'android') {
+          ToastAndroid.show(message, ToastAndroid.SHORT);
+        } else {
+          Alert.alert('Follow', message);
+        }
+      } finally {
+        setFollowLoadingByUser(prev => ({ ...prev, [userId]: false }));
+      }
+    },
+    [followLoadingByUser, updateFollowForUser],
+  );
+
   const pendingLikeRequestsRef = useRef(new Set());
 
   const fetchCommentsForPost = useCallback(
@@ -2261,10 +2360,20 @@ export default function FeedScreen() {
           onCommentPress={openCommentsModal}
           // onPreviewMedia={handlePreviewMedia}
           onRepost={handleRepost}
+          onToggleFollow={handleToggleFollow}
+          isFollowLoading={Boolean(item?.userId && followLoadingByUser[item.userId])}
         />
       );
     },
-    [handleLike, handleSave, handlePreviewMedia, handleRepost, openCommentsModal],
+    [
+      followLoadingByUser,
+      handleLike,
+      handleSave,
+      handlePreviewMedia,
+      handleRepost,
+      handleToggleFollow,
+      openCommentsModal,
+    ],
   );
 
   const feedKeyExtractor = useCallback(
@@ -3305,6 +3414,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
     gap: 6,
+  },
+    button: {
+    backgroundColor: "#EEF2FF",
+    padding:4,
+    borderRadius: 8,
+        width:"30%",
+
+  },
+  buttonActive: {
+    backgroundColor: "#2563EB",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: "#2563EB",
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign:"center"
+  },
+  buttonTextActive: {
+    color: "#ffffff",
   },
   postTitle: {
     fontSize: 16,

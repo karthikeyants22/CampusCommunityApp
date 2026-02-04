@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,6 +17,9 @@ import Colors from "../Common/Colors";
 import authService from "../Authentication/authService";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const PAGE_SIZE = 10;
+const LIST_WINDOW_SIZE = 7;
+const LIST_MAX_BATCH = 10;
 
 const getDisplayName = (user) => {
   if (!user || typeof user !== "object") return "Unknown";
@@ -61,6 +65,16 @@ const normalizeResponse = (payload) => {
   };
 };
 
+const getUserId = (user) => user?.id || user?._id || user?.userId || null;
+
+const getIsFollowing = (user) =>
+  Boolean(
+    user?.isFollowing ??
+      user?.viewerFollowing ??
+      user?.following ??
+      user?.isFollowed
+  );
+
 const FollowersList = () => {
   const navigation = useNavigation();
   const route = useRoute();
@@ -85,7 +99,12 @@ const FollowersList = () => {
   const [followingTotal, setFollowingTotal] = useState(0);
   const [loadingMoreFollowers, setLoadingMoreFollowers] = useState(false);
   const [loadingMoreFollowing, setLoadingMoreFollowing] = useState(false);
+  const [refreshingFollowers, setRefreshingFollowers] = useState(false);
+  const [refreshingFollowing, setRefreshingFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState({});
   const [resolvedUserId, setResolvedUserId] = useState(null);
+  const followersLoadingRef = useRef(false);
+  const followingLoadingRef = useRef(false);
 
   useEffect(() => {
     if (route?.params?.initialTab === "following") {
@@ -104,6 +123,22 @@ const FollowersList = () => {
       return payload?.id || payload?._id || payload?.userId || null;
     };
 
+    const fetchFollowersPage = async (userId, page = 1) => {
+      const res = await authService.getFollowers(userId, page, PAGE_SIZE);
+      if (!res?.isSuccess) {
+        return { ok: false, message: res?.message };
+      }
+      return { ok: true, data: normalizeResponse(res.data) };
+    };
+
+    const fetchFollowingPage = async (userId, page = 1) => {
+      const res = await authService.getFollowing(userId, page, PAGE_SIZE);
+      if (!res?.isSuccess) {
+        return { ok: false, message: res?.message };
+      }
+      return { ok: true, data: normalizeResponse(res.data) };
+    };
+
     const loadLists = async () => {
       setLoading(true);
       setErrorText("");
@@ -119,14 +154,14 @@ const FollowersList = () => {
       setResolvedUserId(userId);
 
       const [followersRes, followingRes] = await Promise.all([
-        authService.getFollowers(userId, 1, 10),
-        authService.getFollowing(userId, 1, 10),
+        fetchFollowersPage(userId, 1),
+        fetchFollowingPage(userId, 1),
       ]);
 
       if (!isMounted) return;
 
-      if (followersRes?.isSuccess) {
-        const normalized = normalizeResponse(followersRes.data);
+      if (followersRes?.ok) {
+        const normalized = followersRes.data;
         setFollowers(normalized.users);
         setFollowersPage(normalized.page || 1);
         setFollowersHasMore(Boolean(normalized.hasMore));
@@ -135,13 +170,13 @@ const FollowersList = () => {
         setErrorText(followersRes?.message || "Failed to load followers.");
       }
 
-      if (followingRes?.isSuccess) {
-        const normalized = normalizeResponse(followingRes.data);
+      if (followingRes?.ok) {
+        const normalized = followingRes.data;
         setFollowing(normalized.users);
         setFollowingPage(normalized.page || 1);
         setFollowingHasMore(Boolean(normalized.hasMore));
         setFollowingTotal(normalized.total || 0);
-      } else if (!followersRes?.isSuccess) {
+      } else if (!followersRes?.ok) {
         setErrorText(followingRes?.message || "Failed to load following.");
       }
 
@@ -155,11 +190,47 @@ const FollowersList = () => {
     };
   }, [route?.params?.userId]);
 
+  const refreshFollowers = useCallback(async () => {
+    if (!resolvedUserId) return;
+    setRefreshingFollowers(true);
+    setErrorText("");
+    const res = await authService.getFollowers(resolvedUserId, 1, PAGE_SIZE);
+    if (res?.isSuccess) {
+      const normalized = normalizeResponse(res.data);
+      setFollowers(normalized.users);
+      setFollowersPage(normalized.page || 1);
+      setFollowersHasMore(Boolean(normalized.hasMore));
+      setFollowersTotal(normalized.total || 0);
+    } else {
+      setErrorText(res?.message || "Failed to refresh followers.");
+    }
+    setRefreshingFollowers(false);
+  }, [resolvedUserId]);
+
+  const refreshFollowing = useCallback(async () => {
+    if (!resolvedUserId) return;
+    setRefreshingFollowing(true);
+    setErrorText("");
+    const res = await authService.getFollowing(resolvedUserId, 1, PAGE_SIZE);
+    if (res?.isSuccess) {
+      const normalized = normalizeResponse(res.data);
+      setFollowing(normalized.users);
+      setFollowingPage(normalized.page || 1);
+      setFollowingHasMore(Boolean(normalized.hasMore));
+      setFollowingTotal(normalized.total || 0);
+    } else {
+      setErrorText(res?.message || "Failed to refresh following.");
+    }
+    setRefreshingFollowing(false);
+  }, [resolvedUserId]);
+
   const loadMoreFollowers = useCallback(async () => {
     if (!resolvedUserId || loadingMoreFollowers || !followersHasMore) return;
+    if (followersLoadingRef.current) return;
+    followersLoadingRef.current = true;
     setLoadingMoreFollowers(true);
     const nextPage = followersPage + 1;
-    const res = await authService.getFollowers(resolvedUserId, nextPage, 10);
+    const res = await authService.getFollowers(resolvedUserId, nextPage, PAGE_SIZE);
     if (res?.isSuccess) {
       const normalized = normalizeResponse(res.data);
       setFollowers((prev) => [...prev, ...normalized.users]);
@@ -168,13 +239,16 @@ const FollowersList = () => {
       setFollowersTotal(normalized.total || 0);
     }
     setLoadingMoreFollowers(false);
+    followersLoadingRef.current = false;
   }, [followersHasMore, followersPage, loadingMoreFollowers, resolvedUserId]);
 
   const loadMoreFollowing = useCallback(async () => {
     if (!resolvedUserId || loadingMoreFollowing || !followingHasMore) return;
+    if (followingLoadingRef.current) return;
+    followingLoadingRef.current = true;
     setLoadingMoreFollowing(true);
     const nextPage = followingPage + 1;
-    const res = await authService.getFollowing(resolvedUserId, nextPage, 10);
+    const res = await authService.getFollowing(resolvedUserId, nextPage, PAGE_SIZE);
     if (res?.isSuccess) {
       const normalized = normalizeResponse(res.data);
       setFollowing((prev) => [...prev, ...normalized.users]);
@@ -183,45 +257,124 @@ const FollowersList = () => {
       setFollowingTotal(normalized.total || 0);
     }
     setLoadingMoreFollowing(false);
+    followingLoadingRef.current = false;
   }, [followingHasMore, followingPage, loadingMoreFollowing, resolvedUserId]);
 
-  const renderUser = useCallback(({ item }) => {
-    const name = getDisplayName(item);
-    const username =
-      item?.username || item?.userName || item?.handle || item?.email || "";
-    const avatarUrl = item?.avatarUrl || item?.profileImage || item?.avatar;
-    return (
-      <View style={styles.row}>
-        <View style={styles.avatar}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-          ) : (
-            <Text style={styles.avatarText}>{getAvatarText(item)}</Text>
-          )}
-        </View>
-        <View style={styles.userText}>
-          <Text style={styles.userName}>{name}</Text>
-          {username ? (
-            <Text style={styles.userHandle}>@{String(username)}</Text>
-          ) : null}
-        </View>
-        <TouchableOpacity style={styles.actionButton} activeOpacity={0.8}>
-          <Text style={styles.actionText}>View</Text>
-        </TouchableOpacity>
-      </View>
-    );
+  const keyExtractor = useCallback(
+    (item, idx) => String(item?.id || item?._id || item?.userId || idx),
+    []
+  );
+
+  const updateFollowState = useCallback((userId, isNowFollowing) => {
+    const updateItem = (item) =>
+      getUserId(item) === userId ? { ...item, isFollowing: isNowFollowing } : item;
+    setFollowers((prev) => prev.map(updateItem));
+    setFollowing((prev) => prev.map(updateItem));
   }, []);
+
+  const handleToggleFollow = useCallback(
+    async (user) => {
+      const userId = getUserId(user);
+      if (!userId) return;
+      if (followLoading[userId]) return;
+
+      const shouldFollow = !getIsFollowing(user);
+      setFollowLoading((prev) => ({ ...prev, [userId]: true }));
+      setErrorText("");
+
+      const res = shouldFollow
+        ? await authService.followUser(userId)
+        : await authService.unfollowUser(userId);
+
+      if (res?.isSuccess) {
+        updateFollowState(userId, shouldFollow);
+      } else {
+        setErrorText(res?.message || "Unable to update follow status.");
+      }
+
+      setFollowLoading((prev) => ({ ...prev, [userId]: false }));
+    },
+    [followLoading, updateFollowState]
+  );
+
+  const renderUser = useCallback(
+    ({ item }) => {
+      const name = getDisplayName(item);
+      const username =
+        item?.username || item?.userName || item?.handle || item?.email || "";
+      const avatarUrl = item?.avatarUrl || item?.profileImage || item?.avatar;
+      const isFollowing = getIsFollowing(item);
+      const userId = getUserId(item);
+      const isBusy = Boolean(userId && followLoading[userId]);
+      return (
+        <View style={styles.row}>
+          <View style={styles.avatar}>
+            {avatarUrl ? (
+              <Image
+                source={{
+                  uri: "https://dealtime-best-illustrated-preparation.trycloudflare.com" + avatarUrl,
+                }}
+                style={styles.avatarImage}
+              />
+            ) : (
+              <Text style={styles.avatarText}>{getAvatarText(item)}</Text>
+            )}
+          </View>
+          <View style={styles.userText}>
+            <Text style={styles.userName}>{name}</Text>
+            {username ? (
+              <Text style={styles.userHandle}>@{String(username)}</Text>
+            ) : null}
+          </View>
+          <TouchableOpacity
+            style={[styles.actionButton, isFollowing && styles.actionButtonActive]}
+            activeOpacity={0.8}
+            onPress={() => handleToggleFollow(item)}
+            disabled={isBusy}
+          >
+            {isBusy ? (
+              <ActivityIndicator size="small" color="#2563EB" />
+            ) : (
+              <Text
+                style={[
+                  styles.actionText,
+                  isFollowing && styles.actionTextActive,
+                ]}
+              >
+                {isFollowing ? "Following" : "Follow"}
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    },
+    [followLoading, handleToggleFollow]
+  );
 
   const renderList = useCallback(
     (data, listKey) => (
       <FlatList
         data={data}
-        keyExtractor={(item, idx) =>
-          String(item?.id || item?._id || item?.userId || idx)
-        }
+        keyExtractor={keyExtractor}
         renderItem={renderUser}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              listKey === "followers" ? refreshingFollowers : refreshingFollowing
+            }
+            onRefresh={
+              listKey === "followers" ? refreshFollowers : refreshFollowing
+            }
+            tintColor="#2563EB"
+          />
+        }
+        removeClippedSubviews
+        windowSize={LIST_WINDOW_SIZE}
+        initialNumToRender={LIST_MAX_BATCH}
+        maxToRenderPerBatch={LIST_MAX_BATCH}
+        updateCellsBatchingPeriod={40}
         onEndReached={() => {
           if (listKey === "followers") {
             loadMoreFollowers();
@@ -255,21 +408,40 @@ const FollowersList = () => {
       />
     ),
     [
+      keyExtractor,
       loadMoreFollowers,
       loadMoreFollowing,
       loading,
       loadingMoreFollowers,
       loadingMoreFollowing,
+      refreshFollowers,
+      refreshFollowing,
+      refreshingFollowers,
+      refreshingFollowing,
       renderUser,
     ]
   );
 
-  const renderScene = ({ route: tabRoute }) => {
-    if (tabRoute.key === "followers") {
-      return renderList(followers, "followers");
-    }
-    return renderList(following, "following");
-  };
+  const renderScene = useCallback(
+    ({ route: tabRoute }) => {
+      if (tabRoute.key === "followers") {
+        return renderList(followers, "followers");
+      }
+      return renderList(following, "following");
+    },
+    [followers, following, renderList]
+  );
+
+  const followersCount = followersTotal || followers.length;
+  const followingCount = followingTotal || following.length;
+
+  const tabRoutes = useMemo(
+    () => [
+      { key: "followers", title: `Followers ${followersCount}` },
+      { key: "following", title: `Following ${followingCount}` },
+    ],
+    [followersCount, followingCount]
+  );
 
   return (
     <View style={styles.root}>
@@ -292,21 +464,10 @@ const FollowersList = () => {
         </View>
       ) : null}
 
-      {!loading ? (
-        <View style={styles.countRow}>
-          <Text style={styles.countText}>
-            Followers: {followersTotal || followers.length}
-          </Text>
-          <Text style={styles.countText}>
-            Following: {followingTotal || following.length}
-          </Text>
-        </View>
-      ) : null}
-
       {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
 
       <TabView
-        navigationState={{ index, routes }}
+        navigationState={{ index, routes: tabRoutes }}
         renderScene={renderScene}
         onIndexChange={setIndex}
         initialLayout={{ width: SCREEN_WIDTH }}
@@ -442,32 +603,28 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   actionButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 18,
+    borderRadius: 8,
+    padding:4,
+    width:"30%",
     backgroundColor: "#EEF2FF",
+  },
+  actionButtonActive: {
+    backgroundColor: "#2563EB",
   },
   actionText: {
     fontSize: 12,
     fontWeight: "600",
+    textAlign:"center",
     color: "#2563EB",
+  },
+  actionTextActive: {
+    color: Colors.white,
   },
   emptyText: {
     textAlign: "center",
     paddingVertical: 20,
     color: "#667085",
     fontSize: 12,
-  },
-  countRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: 18,
-    paddingBottom: 8,
-  },
-  countText: {
-    fontSize: 12,
-    color: "#667085",
-    fontWeight: "600",
   },
   footerLoader: {
     paddingVertical: 12,

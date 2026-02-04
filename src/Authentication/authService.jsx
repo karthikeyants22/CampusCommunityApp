@@ -293,6 +293,41 @@ console.log("final",batchRes);
     };
   },
 
+  followUser: async (userId) => {
+    console.log("IDDD",userId)
+
+    const res = await axiosClient.post(`users/${userId}/follow`);
+
+    console.log("RES",res)
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to follow user",
+      status: res.status,
+    };
+  },
+
+  unfollowUser: async (userId) => {
+        console.log("IDDD",userId)
+
+    const res = await axiosClient.delete(`users/${userId}/follow`);
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+        console.log("RESSSSSSSSSS",res,userId)
+
+    return {
+      isSuccess: false,
+      data: res.data,
+      message:
+        res.data?.message || res.data?.error || "Failed to unfollow user",
+      status: res.status,
+    };
+  },
+
   updateAvatar: async (asset) => {
 
     console.log("SSSSSSSSSSS",asset)
@@ -321,13 +356,13 @@ console.log("final",batchRes);
     });
 
     const res = await axiosClient.post(
-      "https://lifestyle-facilitate-delivers-rough.trycloudflare.com/api/users/me/avatar",
+      "https://dealtime-best-illustrated-preparation.trycloudflare.com/api/users/me/avatar",
       form,
       {
         headers: { "Content-Type": "multipart/form-data" },
       }
     );
-
+console.log("RESSSSSSSSSSSSSSSSSSS",res)
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
     }

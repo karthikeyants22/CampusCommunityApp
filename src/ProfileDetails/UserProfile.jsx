@@ -20,7 +20,7 @@ import { useAppContext } from "../Context/AppContext";
 import authService from "../Authentication/authService";
 import { launchCamera, launchImageLibrary } from "react-native-image-picker";
 
-const FALLBACK_TEXT = "Not provided";
+const FALLBACK_TEXT = "";
 const DOTS = Array.from({ length: 90 });
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const AVATAR_ORIGIN = "https://lifestyle-facilitate-delivers-rough.trycloudflare.com";
@@ -58,11 +58,10 @@ const UserProfileInfo = () => {
       resolvedProfile?.name ||
       resolvedProfile?.username ||
       [resolvedProfile?.firstName, resolvedProfile?.lastName].filter(Boolean).join(" ");
-    const nameSource =
-      displayText(fullName) !== FALLBACK_TEXT ? displayText(fullName) : "Alex Sterling";
+    const nameSource = displayText(fullName);
     const parts = nameSource.trim().split(/\s+/);
     return {
-      firstName: parts[0] ,
+      firstName: parts[0] || "",
     // lastName: parts.slice(1).join(" ") || "Sterling",
     };
   }, [resolvedProfile]);
@@ -215,10 +214,7 @@ const UserProfileInfo = () => {
     if (departmentText !== FALLBACK_TEXT) {
       return departmentText;
     }
-    const fallbackRole = displayText(resolvedProfile?.role);
-    return fallbackRole !== FALLBACK_TEXT
-      ? fallbackRole
-      : "Design & Media Dept. - Class of 2024";
+    return displayText(resolvedProfile?.role);
   }, [resolvedProfile]);
 
   useEffect(() => {
@@ -247,11 +243,9 @@ const UserProfileInfo = () => {
   }, []);
 
   const stats = useMemo(() => {
-    const postsCount = resolvedProfile?.postsCount ?? "1.2k";
-    const followersCount =
-      resolvedProfile?.followersCount ??
-      (isFollowing ? "8.5k" : "8.4k");
-    const followingCount = resolvedProfile?.followingCount ?? "452";
+    const postsCount = resolvedProfile?.postsCount ?? 0;
+    const followersCount = resolvedProfile?.followersCount ?? 0;
+    const followingCount = resolvedProfile?.followingCount ?? 0;
     return [
       { label: "Posts", value: String(postsCount) },
       { label: "Followers", value: String(followersCount) },
@@ -376,7 +370,7 @@ const UserProfileInfo = () => {
                 ) : (
                   <Feather name="user" size={30} color={Colors.black} />
                 )}
-                {avatarUpdating ? (
+                {avatarUpdating || profileLoading ? (
                   <View style={styles.avatarOverlay}>
                     <ActivityIndicator size="small" color={Colors.white} />
                   </View>
@@ -393,126 +387,149 @@ const UserProfileInfo = () => {
         </View>
 
         <View style={styles.profileSheet}>
-          {profileLoading ? (
-            <Text style={styles.statusText}>Loading profile info...</Text>
-          ) : null}
           {profileError ? (
             <Text style={styles.errorTextInline}>{profileError}</Text>
           ) : null}
-          <View style={styles.nameRow}>
-            <View style={styles.nameBlock}>
-              <Text style={styles.namePrimary}>{firstName}</Text>
-              {/* <Text style={styles.nameAccent}>{lastName.toUpperCase()}</Text> */}
-              <Text style={styles.subtitleText}>
-               
-                {displayText(resolvedProfile?.username) !== FALLBACK_TEXT
-                  ? `@${displayText(resolvedProfile?.username)}`
-                  : ""}
-              </Text>
-            </View>
-            {/* <TouchableOpacity
-              style={[
-                styles.followButton,
-                isFollowing && styles.followButtonActive,
-              ]}
-              activeOpacity={0.85}
-              onPress={() => setIsFollowing((current) => !current)}
-            >
-              <Text
-                style={[
-                  styles.followButtonText,
-                  isFollowing && styles.followButtonTextActive,
-                ]}
-              >
-                {isFollowing ? "Following" : "Follow"}
-              </Text>
-            </TouchableOpacity> */}
-          </View>
-
-          <View style={styles.statsRow}>
-            {stats.map((item) => (
-              <View key={item.label} style={styles.statItem}>
-                <Text
-                  onPress={() => handleStatPress(item.label)}
-                  style={styles.statValue}
-                >
-                  {item.value}
-                </Text>
-                <Text style={styles.statLabel}>{item.label}</Text>
+          {profileLoading ? (
+            <View style={styles.skeletonContainer}>
+              <View style={styles.skeletonNameRow}>
+                <View style={styles.skeletonLineLarge} />
+                <View style={styles.skeletonLineSmall} />
               </View>
-            ))}
-          </View>
+              <View style={styles.skeletonStatsRow}>
+                <View style={styles.skeletonStat} />
+                <View style={styles.skeletonStat} />
+                <View style={styles.skeletonStat} />
+              </View>
+              <View style={styles.skeletonTabsRow}>
+                <View style={styles.skeletonTab} />
+                <View style={styles.skeletonTab} />
+                <View style={styles.skeletonTab} />
+              </View>
+              <View style={styles.skeletonGrid}>
+                <View style={styles.skeletonCard} />
+                <View style={styles.skeletonCard} />
+                <View style={styles.skeletonCard} />
+                <View style={styles.skeletonCard} />
+              </View>
+            </View>
+          ) : (
+            <>
+              <View style={styles.nameRow}>
+                <View style={styles.nameBlock}>
+                  <Text style={styles.namePrimary}>{firstName}</Text>
+                  {/* <Text style={styles.nameAccent}>{lastName.toUpperCase()}</Text> */}
+                  <Text style={styles.subtitleText}>
+                    {displayText(resolvedProfile?.username) !== FALLBACK_TEXT
+                      ? `@${displayText(resolvedProfile?.username)}`
+                      : ""}
+                  </Text>
+                </View>
+                {/* <TouchableOpacity
+                  style={[
+                    styles.followButton,
+                    isFollowing && styles.followButtonActive,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => setIsFollowing((current) => !current)}
+                >
+                  <Text
+                    style={[
+                      styles.followButtonText,
+                      isFollowing && styles.followButtonTextActive,
+                    ]}
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </Text>
+                </TouchableOpacity> */}
+              </View>
 
-          <View style={styles.tabsRow}>
-            {tabs.map((tab, index) => (
-              <TouchableOpacity
-                key={tab}
-                style={styles.tabItem}
-                activeOpacity={0.7}
-                onPress={() => {
-                  setActiveTab(tab);
-                  pagerRef.current?.scrollTo({
-                    x: index * SCREEN_WIDTH,
-                    animated: true,
-                  });
+              <View style={styles.statsRow}>
+                {stats.map((item) => (
+                  <View key={item.label} style={styles.statItem}>
+                    <Text
+                      onPress={() => handleStatPress(item.label)}
+                      style={styles.statValue}
+                    >
+                      {item.value}
+                    </Text>
+                    <Text style={styles.statLabel}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <View style={styles.tabsRow}>
+                {tabs.map((tab, index) => (
+                  <TouchableOpacity
+                    key={tab}
+                    style={styles.tabItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setActiveTab(tab);
+                      pagerRef.current?.scrollTo({
+                        x: index * SCREEN_WIDTH,
+                        animated: true,
+                      });
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.tabText,
+                        tab === activeTab && styles.tabTextActive,
+                      ]}
+                    >
+                      {tab}
+                    </Text>
+                    {tab === activeTab && <View style={styles.tabUnderline} />}
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <ScrollView
+                ref={pagerRef}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.tabPagerContent}
+                onMomentumScrollEnd={(event) => {
+                  const index = Math.round(
+                    event.nativeEvent.contentOffset.x / SCREEN_WIDTH
+                  );
+                  setActiveTab(tabs[index] || "Posts");
                 }}
               >
-                <Text
-                  style={[
-                    styles.tabText,
-                    tab === activeTab && styles.tabTextActive,
-                  ]}
-                >
-                  {tab}
-                </Text>
-                {tab === activeTab && <View style={styles.tabUnderline} />}
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <ScrollView
-            ref={pagerRef}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabPagerContent}
-            onMomentumScrollEnd={(event) => {
-              const index = Math.round(
-                event.nativeEvent.contentOffset.x / SCREEN_WIDTH
-              );
-              setActiveTab(tabs[index] || "Posts");
-            }}
-          >
-            <View style={styles.tabPage}>
-              <FlatList
-                data={posts}
-                keyExtractor={(item) => item.id}
-                renderItem={renderPostItem}
-                numColumns={2}
-                columnWrapperStyle={styles.gridRow}
-                contentContainerStyle={styles.gridContent}
-                scrollEnabled={false}
-              />
-            </View>
-            <View style={styles.tabPage}>
-              <FlatList
-                data={bookmarkItems}
-                keyExtractor={(item) => item.id}
-                renderItem={renderBookmarkItem}
-                contentContainerStyle={styles.listBlock}
-                scrollEnabled={false}
-              />
-            </View>
-            <View style={styles.tabPage}>
-              <FlatList
-                data={announcementItems}
-                keyExtractor={(item) => item.id}
-                renderItem={renderAnnouncementItem}
-                contentContainerStyle={styles.listBlock}
-                scrollEnabled={false}
-              />
-            </View>
-          </ScrollView>
+                <View style={styles.tabPage}>
+                  <FlatList
+                    data={posts}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderPostItem}
+                    numColumns={2}
+                    columnWrapperStyle={styles.gridRow}
+                    contentContainerStyle={styles.gridContent}
+                    scrollEnabled={false}
+                  />
+                </View>
+                <View style={styles.tabPage}>
+                  <FlatList
+                    data={bookmarkItems}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderBookmarkItem}
+                    contentContainerStyle={styles.listBlock}
+                    scrollEnabled={false}
+                  />
+                </View>
+                <View style={styles.tabPage}>
+                  <FlatList
+                    data={announcementItems}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderAnnouncementItem}
+                    contentContainerStyle={styles.listBlock}
+                    scrollEnabled={false}
+                  />
+                </View>
+              </ScrollView>
+            </>
+          )}
         </View>
 
         <View style={styles.interactionSection}>
@@ -748,6 +765,61 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#D92D20",
     marginBottom: 10,
+  },
+  skeletonContainer: {
+    paddingVertical: 4,
+  },
+  skeletonNameRow: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  skeletonLineLarge: {
+    height: 26,
+    width: "55%",
+    borderRadius: 12,
+    backgroundColor: "#E4E7EC",
+  },
+  skeletonLineSmall: {
+    height: 14,
+    width: "38%",
+    borderRadius: 10,
+    backgroundColor: "#E4E7EC",
+  },
+  skeletonStatsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 18,
+    marginTop: 6,
+  },
+  skeletonStat: {
+    width: (SCREEN_WIDTH - 44) / 3,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#E4E7EC",
+  },
+  skeletonTabsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
+  skeletonTab: {
+    height: 14,
+    flex: 1,
+    marginHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: "#E4E7EC",
+  },
+  skeletonGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  skeletonCard: {
+    width: "48%",
+    height: 150,
+    borderRadius: 26,
+    marginBottom: 14,
+    backgroundColor: "#E4E7EC",
   },
   nameRow: {
     flexDirection: "row",
