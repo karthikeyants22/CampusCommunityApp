@@ -5,6 +5,8 @@ import axiosClient, {
 } from "./axiosClient";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import ReactNativeBlobUtil from 'react-native-blob-util';
+
 const normalizePresign = (entry = {}, filenameFallback) => {
   const {
     filename,
@@ -151,7 +153,6 @@ const authService = {
   // },
 
   CreatePreSignedUrls: async (files = []) => {
-    console.log("Presign entry", files);
     if (!Array.isArray(files) || files.length === 0) {
       return { status: 400, data: [] };
     }
@@ -166,11 +167,9 @@ const authService = {
       };
 
       const res = await axiosClient.post("media/presign", payload);
-      console.log("res",res);
       
       batchRes.push(normalizePresign(res?.data, file.filename));
     }
-console.log("final",batchRes);
 
     return { status: 200, data: batchRes };
   },
@@ -180,7 +179,6 @@ console.log("final",batchRes);
    */
   CreatePreSignedUrl: async (files) => {
 
-    console.log("CALL_URL")
     const multi = await authService.CreatePreSignedUrls(files);
     // const first = Array.isArray(multi.data) ? multi.data[0] : null;
     return { status: multi.status, data: multi.data };
@@ -225,7 +223,6 @@ console.log("final",batchRes);
     staffId
   ) => {
 
-    console.log("POWEWDW", pwd)
     const response = await axiosClient.post("auth/register", {
       fullName,
       username,
@@ -257,13 +254,63 @@ console.log("final",batchRes);
     };
   },
 
+  getUserById: async (userId) => {
+    if (!userId) {
+      return {
+        isSuccess: false,
+        data: null,
+        message: "Missing user id",
+        status: 0,
+      };
+    }
+    const res = await axiosClient.get(`users/${userId}`);
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load user",
+      status: res.status,
+    };
+  },
+
+  getSavedPosts: async (cursor = 1, limit = 50) => {
+    const res = await axiosClient.get("posts/saved", {
+      params: { cursor, limit },
+    });
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load saved posts",
+      status: res.status,
+    };
+  },
+
+  getUserPosts: async (userId, page = 1, limit = 10) => {
+    const res = await axiosClient.get(`users/${userId}/posts`, {
+      params: { page, limit },
+    });
+    if (res.status >= 200 && res.status < 300) {
+      return { isSuccess: true, data: res.data, status: res.status };
+    }
+    return {
+      isSuccess: false,
+      data: res.data,
+      message: res.data?.message || res.data?.error || "Failed to load posts",
+      status: res.status,
+    };
+  },
+
   getFollowers: async (userId, page = 1, limit = 10) => {
     const res = await axiosClient.get(`users/${userId}/followers`, {
 
       params: { page, limit },
     });
 
-    console.log("RESPONSEFOLLOWERS",res)
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
     }
@@ -280,7 +327,6 @@ console.log("final",batchRes);
     const res = await axiosClient.get(`users/${userId}/following`, {
       params: { page, limit },
     });
-            console.log("RESPONSEFOLLOWING",res)
 
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
@@ -294,11 +340,12 @@ console.log("final",batchRes);
   },
 
   followUser: async (userId) => {
-    console.log("IDDD",userId)
+
+   
 
     const res = await axiosClient.post(`users/${userId}/follow`);
+    console.log("USERRES",res,userId)
 
-    console.log("RES",res)
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
     }
@@ -311,13 +358,14 @@ console.log("final",batchRes);
   },
 
   unfollowUser: async (userId) => {
-        console.log("IDDD",userId)
+       
 
     const res = await axiosClient.delete(`users/${userId}/follow`);
+        console.log("USERREUNFOLLOWS",res,userId)
+
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
     }
-        console.log("RESSSSSSSSSS",res,userId)
 
     return {
       isSuccess: false,
@@ -329,8 +377,7 @@ console.log("final",batchRes);
   },
 
   updateAvatar: async (asset) => {
-
-    console.log("SSSSSSSSSSS",asset)
+  try {
     if (!asset?.uri) {
       return {
         isSuccess: false,
@@ -339,40 +386,116 @@ console.log("final",batchRes);
         status: 0,
       };
     }
+const getFileUri = async (asset) => {
+  if (asset.uri.startsWith('content://')) {
+    console.log("URI",asset)
+    const stat = await ReactNativeBlobUtil.fs.stat(asset.uri);
+    console.log("PATHHH",stat)
+    return 'file://' + stat.path;
+  }
+  return asset.uri;
+};
+    // 🔥 Convert content:// → file://
+    const fileUri = await getFileUri(asset);
 
     const guessFileName = (uri) => {
-      if (!uri) return `avatar_${Date.now()}.jpg`;
       const cleanUri = String(uri).split("?")[0];
       const parts = cleanUri.split("/");
       const last = parts[parts.length - 1];
-      return last && last.includes(".") ? last : `avatar_${Date.now()}.jpg`;
+      return last && last.includes(".")
+        ? last
+        : `avatar_${Date.now()}.jpg`;
     };
 
     const form = new FormData();
     form.append("avatar", {
-      uri: asset.uri,
-      name: asset.fileName || guessFileName(asset.uri),
+      uri: fileUri,
+      name: asset.fileName || guessFileName(fileUri),
       type: asset.type || "image/jpeg",
     });
 
     const res = await axiosClient.post(
-      "https://dealtime-best-illustrated-preparation.trycloudflare.com/api/users/me/avatar",
+      "users/me/avatar",
       form,
       {
-        headers: { "Content-Type": "multipart/form-data" },
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 30000, // 👈 prevents silent timeout
       }
     );
-console.log("RESSSSSSSSSSSSSSSSSSS",res)
+
+    console.log("RESSS",res)
+
     if (res.status >= 200 && res.status < 300) {
       return { isSuccess: true, data: res.data, status: res.status };
     }
+
     return {
       isSuccess: false,
       data: res.data,
-      message: res.data?.message || res.data?.error || "Failed to update avatar",
+      message: res.data?.message || "Upload failed",
       status: res.status,
     };
-  },
+
+  } catch (error) {
+    console.log("UPLOAD ERROR", error);
+    return {
+      isSuccess: false,
+      data: null,
+      message: error.message || "Network Error",
+      status: 0,
+    };
+  }
+},
+
+
+//   updateAvatar: async (asset) => {
+
+//     console.log("AVATARASSET",asset)
+//     if (!asset?.uri) {
+//       return {
+//         isSuccess: false,
+//         data: null,
+//         message: "Missing image data",
+//         status: 0,
+//       };
+//     }
+
+//     const guessFileName = (uri) => {
+//       if (!uri) return `avatar_${Date.now()}.jpg`;
+//       const cleanUri = String(uri).split("?")[0];
+//       const parts = cleanUri.split("/");
+//       const last = parts[parts.length - 1];
+//       return last && last.includes(".") ? last : `avatar_${Date.now()}.jpg`;
+//     };
+
+//     const form = new FormData();
+//     form.append("avatar", {
+//       uri: asset.uri,
+//       name: asset.fileName || guessFileName(asset.uri),
+//       type: asset.type || "image/jpeg",
+//     });
+// console.log("FORM",form)
+//     const res = await axiosClient.post(
+//       "users/me/avatar",
+//       form,
+//       {
+//         headers: { "Content-Type": "multipart/form-data" },
+//       }
+//     );
+
+//     console.log("ENDRESPONSE",res)
+//     if (res.status >= 200 && res.status < 300) {
+//       return { isSuccess: true, data: res.data, status: res.status };
+//     }
+//     return {
+//       isSuccess: false,
+//       data: res.data,
+//       message: res.data?.message || res.data?.error || "Failed to update avatar",
+//       status: res.status,
+//     };
+//   },
 
   logout: async () => {
     await AsyncStorage.multiRemove([ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY]);

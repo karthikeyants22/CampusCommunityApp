@@ -285,12 +285,12 @@ const normalizeApiPost = (post, index = 0) => {
     userId: author?.id ?? author?._id ?? author?.userId ?? post?.userId ?? null,
     isFollowing: Boolean(
       author?.isFollowing ??
-        author?.viewerFollowing ??
-        author?.following ??
-        post?.viewerFollowing ??
-        viewer?.isFollowing ??
-        viewer?.viewerFollowing ??
-        false,
+      author?.viewerFollowing ??
+      author?.following ??
+      post?.viewerFollowing ??
+      viewer?.isFollowing ??
+      viewer?.viewerFollowing ??
+      false,
     ),
     title: headline.length > 140 ? `${headline.slice(0, 140).trim()}...` : headline,
     content: detail,
@@ -657,7 +657,7 @@ const MediaCarousel = memo(({ media, onPreviewMedia, onDoubleLike }) => {
 });
 
 // Lightweight comparison helpers keep FlatList rows pure for better virtualization performance.
-const normalizeCount = value => (Number.isFinite(value) ? value :0);
+const normalizeCount = value => (Number.isFinite(value) ? value : 0);
 const normalizeText = value =>
   typeof value === 'string' ? value : value != null ? String(value) : '';
 const normalizeArray = value => (Array.isArray(value) ? value : EMPTY_ARRAY);
@@ -715,7 +715,8 @@ const arePostCardPropsEqual = (prevProps, nextProps) => {
     prevProps.onPreviewMedia !== nextProps.onPreviewMedia ||
     prevProps.onRepost !== nextProps.onRepost ||
     prevProps.onToggleFollow !== nextProps.onToggleFollow ||
-    prevProps.isFollowLoading !== nextProps.isFollowLoading
+    prevProps.isFollowLoading !== nextProps.isFollowLoading ||
+    prevProps.isOwnPost !== nextProps.isOwnPost
   ) {
     return false;
   }
@@ -772,6 +773,7 @@ const PostCard = memo(
     onRepost,
     onToggleFollow,
     isFollowLoading,
+    isOwnPost,
   }) => {
     const authorName = item?.name || 'Community member';
     const timestamp = item?.time || 'Just now';
@@ -958,14 +960,31 @@ const PostCard = memo(
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          {item.profileImage ? (
-            <Image source={{ uri: "https://dealtime-best-illustrated-preparation.trycloudflare.com"+item.profileImage }} style={styles.profileImage} />
-          ) : (
-            <View style={styles.profilePlaceholder}>
-              <Text onPress={()=>navigation.navigate("UserProfileInfo")} 
-              style={styles.initials}>{initials}</Text>
-            </View>
-          )}
+
+          <TouchableOpacity 
+          
+          onPress={() => {
+            const targetUserId = item?.userId ?? null;
+            if (isOwnPost) {
+              navigation.navigate("MainTabs", { screen: "Profile" });
+              return;
+            }
+            if (targetUserId) {
+              navigation.navigate("UserProfileInfo", { userId: targetUserId });
+            } else {
+              navigation.navigate("MainTabs", { screen: "Profile" });
+            }
+          }}>
+            {item.profileImage ? (
+              <Image source={{ uri: "https://archived-howto-attacked-regularly.trycloudflare.com" + item.profileImage }} style={styles.profileImage} />
+            ) : (
+              <View style={styles.profilePlaceholder}>
+                <Text 
+                  style={styles.initials}>{initials}</Text>
+              </View>
+
+            )}
+          </TouchableOpacity>
 
           <View style={styles.userInfo}>
             <Text style={styles.userName}>{authorName}</Text>
@@ -976,23 +995,25 @@ const PostCard = memo(
           {/* <TouchableOpacity style={styles.moreButton} onPress={handleLogout}>
             <Icon name="more-horizontal" size={22} color="#475467" />
           </TouchableOpacity> */}
-          <TouchableOpacity
-            style={[
-              styles.button,
-              isFollowing && styles.buttonActive,
-              !canFollow && styles.buttonDisabled,
-            ]}
-            onPress={handleFollowPress}
-            disabled={!canFollow || isFollowLoading}
-          >
-            {isFollowLoading ? (
-              <ActivityIndicator size="small" color={isFollowing ? '#ffffff' : '#2563EB'} />
-            ) : (
-              <Text style={[styles.buttonText, isFollowing && styles.buttonTextActive]}>
-                {isFollowing ? 'Following' : 'Follow'}
-              </Text>
-            )}
-          </TouchableOpacity>
+          {!isOwnPost ? (
+            <TouchableOpacity
+              style={[
+                styles.button,
+                isFollowing && styles.buttonActive,
+                !canFollow && styles.buttonDisabled,
+              ]}
+              onPress={handleFollowPress}
+              disabled={!canFollow || isFollowLoading}
+            >
+              {isFollowLoading ? (
+                <ActivityIndicator size="small" color={isFollowing ? '#ffffff' : '#2563EB'} />
+              ) : (
+                <Text style={[styles.buttonText, isFollowing && styles.buttonTextActive]}>
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <View style={styles.cardBody}>
@@ -1162,6 +1183,7 @@ export default function FeedScreen() {
   const [searchText, setSearchText] = useState('');
   const [posts, setPosts] = useState([]);
   const postsRef = useRef(posts);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [followLoadingByUser, setFollowLoadingByUser] = useState({});
   const [pagination, setPagination] = useState({ page: 1, limit: FEED_PAGE_SIZE, count: 0 });
   const [hasMore, setHasMore] = useState(true);
@@ -1202,6 +1224,24 @@ export default function FeedScreen() {
   useEffect(() => {
     postsRef.current = posts;
   }, [posts]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCurrentUser = async () => {
+      const res = await authService.getUsersList();
+      if (!isMounted) return;
+      if (res?.isSuccess) {
+        const payload = res.data?.data ?? res.data;
+        const id = payload?.id ?? payload?.userId ?? payload?._id ?? null;
+        setCurrentUserId(id);
+      }
+    };
+
+    loadCurrentUser();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   // const fetchFeed = useCallback(
   //   async ({ page: pageParam = 1, refreshing = false } = {}) => {
   //     if (feedRequestRef.current) {
@@ -1309,7 +1349,7 @@ export default function FeedScreen() {
         const response = await axiosClient.get('posts/feed', {
           params: { page: pageParam, limit: FEED_PAGE_SIZE, pageCount: pageParam },
         });
-        console.log("FEEDDDDDDDDDDDDDDDDM", response)
+        console.log("FEED_LIST_RESPONSE", response)
         if (response.status < 200 || response.status >= 300) {
           throw new Error(response.data?.message || `Feed request failed (${response.status})`);
         }
@@ -1397,7 +1437,6 @@ export default function FeedScreen() {
         params: { page: 1, limit: 10, includeArchived: false },
       });
 
-      console.log("RESPONANNN===============",response)
       if (response.status < 200 || response.status >= 300) {
         throw new Error(response.data?.message || `Announcements request failed (${response.status})`);
       }
@@ -1955,7 +1994,6 @@ export default function FeedScreen() {
           params: { page, limit: COMMENT_PAGE_SIZE },
         });
 
-        console.log("POST", response)
 
         const payload = response?.data?.data ?? response?.data ?? {};
 
@@ -2253,7 +2291,6 @@ export default function FeedScreen() {
         text,
       });
 
-      console.log("RESPOSCOMMENTS", response)
 
       const responsePayload =
         response?.data?.data?.comment ??
@@ -2352,6 +2389,10 @@ export default function FeedScreen() {
       if (item?.__skeleton) {
         return <FeedSkeletonCard />;
       }
+      const isOwnPost =
+        currentUserId != null &&
+        item?.userId != null &&
+        String(item.userId) === String(currentUserId);
       return (
         <PostCard
           item={item}
@@ -2362,10 +2403,12 @@ export default function FeedScreen() {
           onRepost={handleRepost}
           onToggleFollow={handleToggleFollow}
           isFollowLoading={Boolean(item?.userId && followLoadingByUser[item.userId])}
+          isOwnPost={isOwnPost}
         />
       );
     },
     [
+      currentUserId,
       followLoadingByUser,
       handleLike,
       handleSave,
@@ -3415,11 +3458,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     gap: 6,
   },
-    button: {
+  button: {
     backgroundColor: "#EEF2FF",
-    padding:4,
+    padding: 4,
     borderRadius: 8,
-        width:"30%",
+    width: "30%",
 
   },
   buttonActive: {
@@ -3432,7 +3475,7 @@ const styles = StyleSheet.create({
     color: "#2563EB",
     fontSize: 14,
     fontWeight: "600",
-    textAlign:"center"
+    textAlign: "center"
   },
   buttonTextActive: {
     color: "#ffffff",
@@ -3687,8 +3730,8 @@ const styles = StyleSheet.create({
   },
   feedFooter: {
 
-padding:5,
-marginTop:10,
+    padding: 5,
+    marginTop: 10,
     flexDirection: "row",
     alignItems: 'center',
     justifyContent: 'center',

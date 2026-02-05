@@ -45,23 +45,28 @@ const normalizeResponse = (payload) => {
     };
   }
 
-  const users = Array.isArray(payload.users)
-    ? payload.users
-    : Array.isArray(payload.data)
-      ? payload.data
-      : [];
+  const container =
+    payload?.data && typeof payload.data === "object" ? payload.data : payload;
+
+  const users = Array.isArray(container.users)
+    ? container.users
+    : Array.isArray(container.data)
+      ? container.data
+      : Array.isArray(payload.users)
+        ? payload.users
+        : [];
 
   return {
     users,
-    page: Number(payload.page ?? 1),
-    limit: Number(payload.limit ?? 10),
-    total: Number(payload.total ?? 0),
-    count: Number(payload.count ?? users.length ?? 0),
-    hasMore: Boolean(payload.hasMore),
+    page: Number(container.page ?? payload.page ?? 1),
+    limit: Number(container.limit ?? payload.limit ?? 10),
+    total: Number(container.total ?? payload.total ?? 0),
+    count: Number(container.count ?? payload.count ?? users.length ?? 0),
+    hasMore: Boolean(container.hasMore ?? payload.hasMore),
     nextPage:
-      payload.nextPage === null || payload.nextPage === undefined
+      container.nextPage === null || container.nextPage === undefined
         ? null
-        : Number(payload.nextPage),
+        : Number(container.nextPage),
   };
 };
 
@@ -69,11 +74,15 @@ const getUserId = (user) => user?.id || user?._id || user?.userId || null;
 
 const getIsFollowing = (user) =>
   Boolean(
-    user?.isFollowing ??
+    user?.viewerFollows ??
+      user?.isFollowing ??
       user?.viewerFollowing ??
       user?.following ??
       user?.isFollowed
   );
+
+const getFollowsViewer = (user) =>
+  Boolean(user?.followsViewer ?? user?.isFollower ?? user?.followsYou);
 
 const FollowersList = () => {
   const navigation = useNavigation();
@@ -125,6 +134,8 @@ const FollowersList = () => {
 
     const fetchFollowersPage = async (userId, page = 1) => {
       const res = await authService.getFollowers(userId, page, PAGE_SIZE);
+
+      console.log("followers",res)
       if (!res?.isSuccess) {
         return { ok: false, message: res?.message };
       }
@@ -133,6 +144,8 @@ const FollowersList = () => {
 
     const fetchFollowingPage = async (userId, page = 1) => {
       const res = await authService.getFollowing(userId, page, PAGE_SIZE);
+      console.log("following",res)
+
       if (!res?.isSuccess) {
         return { ok: false, message: res?.message };
       }
@@ -267,7 +280,16 @@ const FollowersList = () => {
 
   const updateFollowState = useCallback((userId, isNowFollowing) => {
     const updateItem = (item) =>
-      getUserId(item) === userId ? { ...item, isFollowing: isNowFollowing } : item;
+      getUserId(item) === userId
+        ? {
+            ...item,
+            isFollowing: isNowFollowing,
+            viewerFollows: isNowFollowing,
+            viewerFollowing: isNowFollowing,
+            following: isNowFollowing,
+            isFollowed: isNowFollowing,
+          }
+        : item;
     setFollowers((prev) => prev.map(updateItem));
     setFollowing((prev) => prev.map(updateItem));
   }, []);
@@ -279,6 +301,7 @@ const FollowersList = () => {
       if (followLoading[userId]) return;
 
       const shouldFollow = !getIsFollowing(user);
+      console.log("USERDE",shouldFollow,user)
       setFollowLoading((prev) => ({ ...prev, [userId]: true }));
       setErrorText("");
 
@@ -286,15 +309,24 @@ const FollowersList = () => {
         ? await authService.followUser(userId)
         : await authService.unfollowUser(userId);
 
+        console.log("RESSSSSSSS",res)
+
       if (res?.isSuccess) {
         updateFollowState(userId, shouldFollow);
+        if (index === 0) {
+          await refreshFollowers();
+          await refreshFollowing();
+        } else {
+          await refreshFollowing();
+          await refreshFollowers();
+        }
       } else {
         setErrorText(res?.message || "Unable to update follow status.");
       }
 
       setFollowLoading((prev) => ({ ...prev, [userId]: false }));
     },
-    [followLoading, updateFollowState]
+    [followLoading, index, refreshFollowers, refreshFollowing, updateFollowState]
   );
 
   const renderUser = useCallback(
@@ -304,15 +336,23 @@ const FollowersList = () => {
         item?.username || item?.userName || item?.handle || item?.email || "";
       const avatarUrl = item?.avatarUrl || item?.profileImage || item?.avatar;
       const isFollowing = getIsFollowing(item);
+      const followsViewer = getFollowsViewer(item);
       const userId = getUserId(item);
       const isBusy = Boolean(userId && followLoading[userId]);
+      const relationText = followsViewer && isFollowing
+        ? "Mutual"
+        : followsViewer
+          ? "Follows you"
+          : isFollowing
+            ? "Following"
+            : "";
       return (
         <View style={styles.row}>
           <View style={styles.avatar}>
             {avatarUrl ? (
               <Image
                 source={{
-                  uri: "https://dealtime-best-illustrated-preparation.trycloudflare.com" + avatarUrl,
+                  uri: "https://archived-howto-attacked-regularly.trycloudflare.com" + avatarUrl,
                 }}
                 style={styles.avatarImage}
               />
@@ -324,6 +364,9 @@ const FollowersList = () => {
             <Text style={styles.userName}>{name}</Text>
             {username ? (
               <Text style={styles.userHandle}>@{String(username)}</Text>
+            ) : null}
+            {relationText ? (
+              <Text style={styles.relationshipText}>{relationText}</Text>
             ) : null}
           </View>
           <TouchableOpacity
@@ -385,7 +428,7 @@ const FollowersList = () => {
         onEndReachedThreshold={0.2}
         ListEmptyComponent={
           !loading ? (
-            <Text style={styles.emptyText}>No users found.</Text>
+            <Text style={styles.emptyText}>No followers found.</Text>
           ) : null
         }
         ListFooterComponent={
@@ -600,6 +643,11 @@ const styles = StyleSheet.create({
   userHandle: {
     fontSize: 12,
     color: "#667085",
+    marginTop: 2,
+  },
+  relationshipText: {
+    fontSize: 12,
+    color: "#98A2B3",
     marginTop: 2,
   },
   actionButton: {

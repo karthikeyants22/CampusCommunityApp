@@ -649,7 +649,6 @@ const handlePost = useCallback(async () => {
     };
 
     const create = await authService.CreatePost(payload);
-    console.log("CREATE",create.data)
     if (create.status !== 200 && create.status !== 201) {
       throw new Error(`Create post failed (${create.data.message})`);
     }

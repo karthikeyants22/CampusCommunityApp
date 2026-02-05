@@ -52,6 +52,8 @@ export default function LoginScreen() {
     const cleanEmail = email.trim();
     setLoading(true);
     const result = await authService.login(cleanEmail, password);
+
+    console.log("LOGINRESULT",result)
     if (result.status===200) {
       Toast.show("Login successful");
       navigation.reset({ index: 0, routes: [{ name: "MainTabs" }] });

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   Dimensions,
   FlatList,
   Image,
@@ -12,8 +13,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Alert
 } from "react-native";
+import moment from "moment";
 import Feather from "react-native-vector-icons/Feather";
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { useNavigation } from "@react-navigation/native";
 import Colors from "../Common/Colors";
 import { useAppContext } from "../Context/AppContext";
@@ -23,8 +28,10 @@ import { launchCamera, launchImageLibrary } from "react-native-image-picker";
 const FALLBACK_TEXT = "";
 const DOTS = Array.from({ length: 90 });
 const SCREEN_WIDTH = Dimensions.get("window").width;
-const AVATAR_ORIGIN = "https://dealtime-best-illustrated-preparation.trycloudflare.com";
+const AVATAR_ORIGIN = "https://archived-howto-attacked-regularly.trycloudflare.com";
 const ANDROID_13 = 33;
+const SAVED_PAGE_SIZE = 10;
+const POSTS_PAGE_SIZE = 10;
 
 const ProfileInfo = () => {
   const navigation = useNavigation();
@@ -32,12 +39,27 @@ const ProfileInfo = () => {
   const [activeTab, setActiveTab] = useState("Posts");
   const [isFollowing, setIsFollowing] = useState(false);
   const pagerRef = useRef(null);
+  const postsFetchingRef = useRef(false);
+  const savedFetchingRef = useRef(false);
   const [profileData, setProfileData] = useState(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [avatarUpdating, setAvatarUpdating] = useState(false);
   const [showAvatarSheet, setShowAvatarSheet] = useState(false);
   const [avatarError, setAvatarError] = useState("");
+  const [userPosts, setUserPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsError, setPostsError] = useState("");
+  const [postsPage, setPostsPage] = useState(1);
+  const [postsHasMore, setPostsHasMore] = useState(false);
+  const [postsInitialized, setPostsInitialized] = useState(false);
+  const [savedPosts, setSavedPosts] = useState([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [savedError, setSavedError] = useState("");
+  const [savedCursor, setSavedCursor] = useState(1);
+  const [savedHasMore, setSavedHasMore] = useState(false);
+  const [savedInitialized, setSavedInitialized] = useState(false);
+  const [refreshingProfile, setRefreshingProfile] = useState(false);
 
   const displayText = (value) => {
     if (value === null || value === undefined) {
@@ -62,7 +84,7 @@ const ProfileInfo = () => {
     const parts = nameSource.trim().split(/\s+/);
     return {
       firstName: parts[0] || "",
-    // lastName: parts.slice(1).join(" ") || "Sterling",
+      // lastName: parts.slice(1).join(" ") || "Sterling",
     };
   }, [resolvedProfile]);
 
@@ -80,14 +102,30 @@ const ProfileInfo = () => {
     [resolvedProfile]
   );
 
-  console.log("AVAT",avatarUrl)
-
+  const handleLogout = useCallback(() => {
+    Alert.alert('Sign out', 'Are you sure you want to log out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Log out',
+        style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.clear();
+          navigation.navigate('SplashScreen');
+        },
+      },
+    ]);
+  }, [navigation]);
   const avatarUri = useMemo(() => {
-    
+
     if (!avatarUrl) return "";
     if (/^https?:\/\//i.test(avatarUrl)) return avatarUrl;
     return `${AVATAR_ORIGIN}${avatarUrl}`;
   }, [avatarUrl]);
+
+  const profileUserId = useMemo(
+    () => resolvedProfile?.id ?? resolvedProfile?.userId ?? resolvedProfile?._id ?? null,
+    [resolvedProfile]
+  );
 
   const applyAvatarUrl = (url) => {
     if (!url) return;
@@ -96,12 +134,15 @@ const ProfileInfo = () => {
   };
 
   const handleAvatarResponse = async (response) => {
+
+    console.log("RESSSSSSSSSS", response)
     if (response?.didCancel) return;
     if (response?.errorCode) {
       setAvatarError(response.errorMessage || "Unable to access image.");
       return;
     }
     const asset = response?.assets?.[0];
+    console.log("ASEEEE", asset)
     if (!asset?.uri) {
       setAvatarError("No image selected.");
       return;
@@ -190,7 +231,7 @@ const ProfileInfo = () => {
       launchCamera({ mediaType: "photo", quality: 0.8 }, handleAvatarResponse);
     } else {
       launchImageLibrary(
-        { mediaType: "photo", quality: 0.8, selectionLimit: 1,includeExtra:true },
+        { mediaType: "photo", quality: 0.8, selectionLimit: 1, includeExtra: true },
         handleAvatarResponse
       );
     }
@@ -199,8 +240,8 @@ const ProfileInfo = () => {
   const subtitleText = useMemo(() => {
     const roleText = displayText(
       resolvedProfile?.occupation ||
-        resolvedProfile?.designation ||
-        resolvedProfile?.role
+      resolvedProfile?.designation ||
+      resolvedProfile?.role
     );
     if (roleText !== FALLBACK_TEXT) {
       return roleText;
@@ -220,6 +261,63 @@ const ProfileInfo = () => {
     return displayText(resolvedProfile?.role);
   }, [resolvedProfile]);
 
+
+  const handleMainScroll = (event) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent || {};
+    if (!layoutMeasurement || !contentOffset || !contentSize) {
+      return;
+    }
+    const paddingToBottom = 240;
+    const isNearEnd = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+    if (!isNearEnd) {
+      return;
+    }
+    if (activeTab === "Posts") {
+      if (!postsHasMore || postsFetchingRef.current) {
+        return;
+      }
+      loadUserPosts(postsPage, { append: true });
+      return;
+    }
+    if (activeTab === "Bookmarks") {
+      if (!savedHasMore || savedFetchingRef.current) {
+        return;
+      }
+      loadSavedPosts(savedCursor, { append: true });
+    }
+  };
+
+  const handleRefreshProfile = async () => {
+    if (refreshingProfile) {
+      return;
+    }
+    setRefreshingProfile(true);
+    setProfileError("");
+    setPostsError("");
+    setSavedError("");
+
+    const profileRes = await authService.getUsersList();
+    if (profileRes?.isSuccess) {
+      const payload = profileRes.data?.data ?? profileRes.data;
+      setProfileData(payload || null);
+      if (typeof payload?.viewerFollowing === "boolean") {
+        setIsFollowing(payload.viewerFollowing);
+      }
+    } else {
+      setProfileError(profileRes?.message || "Unable to load profile info");
+    }
+
+    if (profileUserId) {
+      setPostsPage(1);
+      await loadUserPosts(1, { append: false });
+    }
+
+    setSavedCursor(1);
+    await loadSavedPosts(1, { append: false });
+
+    setRefreshingProfile(false);
+  };
+
   useEffect(() => {
     let isMounted = true;
     const loadProfile = async () => {
@@ -227,7 +325,6 @@ const ProfileInfo = () => {
       setProfileError("");
       const res = await authService.getUsersList();
 
-      console.log("RESSSSS>>>>>>>>>>>",res)
       if (!isMounted) return;
       if (res.isSuccess) {
         const payload = res.data?.data ?? res.data;
@@ -247,6 +344,340 @@ const ProfileInfo = () => {
     };
   }, []);
 
+  const extractSavedList = (payload = {}) => {
+    const data =
+      payload?.data ??
+      payload?.result ??
+      payload?.payload ??
+      payload;
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (Array.isArray(data?.posts)) {
+      return data.posts;
+    }
+    if (Array.isArray(data?.items)) {
+      return data.items;
+    }
+    if (Array.isArray(data?.rows)) {
+      return data.rows;
+    }
+    if (Array.isArray(payload?.posts)) {
+      return payload.posts;
+    }
+    return [];
+  };
+
+  const extractUserPostsList = (payload = {}) => {
+    const data =
+      payload?.data ??
+      payload?.result ??
+      payload?.payload ??
+      payload;
+
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (Array.isArray(data?.posts)) {
+      return data.posts;
+    }
+    if (Array.isArray(data?.items)) {
+      return data.items;
+    }
+    if (Array.isArray(data?.rows)) {
+      return data.rows;
+    }
+    if (Array.isArray(payload?.posts)) {
+      return payload.posts;
+    }
+    return [];
+  };
+
+  const resolvePostsHasMore = (payload = {}, currentPage = 1, listLength = 0) => {
+    const candidates = [
+      payload?.hasMore,
+      payload?.hasNextPage,
+      payload?.meta?.hasMore,
+      payload?.meta?.hasNextPage,
+      payload?.pagination?.hasMore,
+      payload?.pagination?.hasNextPage,
+    ];
+
+    for (const flag of candidates) {
+      if (typeof flag === "boolean") {
+        return flag;
+      }
+    }
+
+    if (payload?.links?.next != null) {
+      return true;
+    }
+
+    if (payload?.nextPage != null) {
+      const nextPage = Number(payload.nextPage);
+      if (Number.isFinite(nextPage)) {
+        return nextPage > currentPage;
+      }
+    }
+
+    if (payload?.totalPages != null) {
+      const totalPages = Number(payload.totalPages);
+      const page = Number(payload.page ?? currentPage);
+      if (Number.isFinite(totalPages) && Number.isFinite(page)) {
+        return page < totalPages;
+      }
+    }
+
+    return listLength >= POSTS_PAGE_SIZE;
+  };
+
+  const resolvePostsPage = (payload = {}, fallbackPage = 1) => {
+    const next =
+      payload?.nextPage ??
+      payload?.meta?.nextPage ??
+      payload?.pagination?.nextPage;
+
+    if (next !== undefined && next !== null) {
+      return next;
+    }
+    return fallbackPage + 1;
+  };
+
+  const normalizeUserPost = (post = {}, index = 0) => {
+    const fallbackId = `post-${index}-${Date.now()}`;
+    const safeId = post?.id ?? post?._id ?? post?.postId ?? fallbackId;
+    const rawContent = typeof post?.content === "string" ? post.content : "";
+    const trimmed = rawContent.trim();
+    const title =
+      post?.title ||
+      post?.headline ||
+      post?.name ||
+      (trimmed ? trimmed.split(/\n+/)[0] : "") ||
+      "Post";
+    const createdAt =
+      post?.createdAt ||
+      post?.created_at ||
+      post?.updatedAt ||
+      null;
+    let timeLabel = "";
+    if (createdAt) {
+      const parsed = moment(createdAt);
+      if (parsed.isValid()) {
+        const absolute = parsed.format("MMM D, YYYY");
+        const relative = parsed.fromNow();
+        timeLabel = `${absolute} - ${relative}`;
+      } else {
+        timeLabel = new Date(createdAt).toLocaleDateString();
+      }
+    }
+    const mediaItem = Array.isArray(post?.media) ? post.media[0] : null;
+    const thumbnail =
+      mediaItem?.url ||
+      mediaItem?.publicUrl ||
+      mediaItem?.metadata?.publicUrl ||
+      mediaItem?.metadata?.url ||
+      "";
+
+    return {
+      id: String(safeId),
+      title,
+      time: timeLabel,
+      thumbnail,
+      raw: post,
+    };
+  };
+
+  const resolveSavedHasMore = (payload = {}, currentCursor = 1, listLength = 0) => {
+    const candidates = [
+      payload?.hasMore,
+      payload?.hasNextPage,
+      payload?.meta?.hasMore,
+      payload?.meta?.hasNextPage,
+      payload?.pagination?.hasMore,
+      payload?.pagination?.hasNextPage,
+      payload?.data?.hasMore,
+      payload?.data?.hasNextPage,
+    ];
+
+    for (const flag of candidates) {
+      if (typeof flag === "boolean") {
+        return flag;
+      }
+    }
+
+    if (payload?.links?.next != null || payload?.data?.links?.next != null) {
+      return true;
+    }
+
+    if (payload?.nextCursor != null || payload?.data?.nextCursor != null) {
+      return true;
+    }
+
+    if (payload?.remaining != null || payload?.data?.remaining != null) {
+      const remaining = Number(payload?.remaining ?? payload?.data?.remaining);
+      if (Number.isFinite(remaining)) {
+        return remaining > 0;
+      }
+    }
+
+    if (payload?.nextPage != null || payload?.data?.nextPage != null) {
+      const nextPage = Number(payload?.nextPage ?? payload?.data?.nextPage);
+      if (Number.isFinite(nextPage)) {
+        return nextPage > currentCursor;
+      }
+    }
+
+    if (payload?.totalPages != null || payload?.data?.totalPages != null) {
+      const totalPages = Number(payload?.totalPages ?? payload?.data?.totalPages);
+      const page = Number(payload?.page ?? payload?.data?.page ?? currentCursor);
+      if (Number.isFinite(totalPages) && Number.isFinite(page)) {
+        return page < totalPages;
+      }
+    }
+
+    return listLength >= SAVED_PAGE_SIZE;
+  };
+
+  const resolveSavedCursor = (payload = {}, fallbackCursor = 1) => {
+    const next =
+      payload?.nextCursor ??
+      payload?.meta?.nextCursor ??
+      payload?.pagination?.nextCursor ??
+      payload?.cursor ??
+      payload?.meta?.next;
+
+    if (next !== undefined && next !== null) {
+      return next;
+    }
+    if (typeof fallbackCursor === "number") {
+      return fallbackCursor + 1;
+    }
+    return 2;
+  };
+
+  const normalizeSavedPost = (post = {}, index = 0) => {
+    const fallbackId = `saved-${index}-${Date.now()}`;
+    const safeId = post?.id ?? post?._id ?? post?.postId ?? fallbackId;
+    const rawContent = typeof post?.content === "string" ? post.content : "";
+    const trimmed = rawContent.trim();
+    const title =
+      post?.title ||
+      post?.headline ||
+      post?.name ||
+      (trimmed ? trimmed.split(/\n+/)[0] : "") ||
+      "Saved post";
+    const createdAt =
+      post?.createdAt ||
+      post?.created_at ||
+      post?.savedAt ||
+      post?.updatedAt ||
+      null;
+    let timeLabel = "Saved";
+    if (createdAt) {
+      const parsed = moment(createdAt);
+      if (parsed.isValid()) {
+        const absolute = parsed.format("MMM D, YYYY");
+        const relative = parsed.fromNow();
+        timeLabel = `${absolute} - ${relative}`;
+      } else {
+        timeLabel = new Date(createdAt).toLocaleDateString();
+      }
+    }
+    const author =
+      post?.user?.fullName ||
+      post?.user?.username ||
+      post?.author?.fullName ||
+      post?.author?.username ||
+      post?.owner?.username ||
+      "";
+    const mediaItem = Array.isArray(post?.media) ? post.media[0] : null;
+    const thumbnail =
+      mediaItem?.url ||
+      mediaItem?.publicUrl ||
+      mediaItem?.metadata?.publicUrl ||
+      mediaItem?.metadata?.url ||
+      "";
+
+    return {
+      id: String(safeId),
+      title,
+      time: author ? `${author} - ${timeLabel}` : timeLabel,
+      thumbnail,
+      raw: post,
+    };
+  };
+
+  const loadSavedPosts = async (cursor = 1, options = {}) => {
+    if (savedFetchingRef.current) {
+      return;
+    }
+    savedFetchingRef.current = true;
+    const { append = false } = options;
+    setSavedLoading(true);
+    setSavedError("");
+    const res = await authService.getSavedPosts(cursor, SAVED_PAGE_SIZE);
+
+
+    if (res?.isSuccess) {
+      const payload = res.data?.data ?? res.data;
+      const list = extractSavedList(payload);
+      setSavedPosts((prev) => (append ? [...prev, ...list] : list));
+      setSavedHasMore(resolveSavedHasMore(payload, cursor, list.length));
+      setSavedCursor(resolveSavedCursor(payload, cursor));
+    } else {
+      setSavedError(res?.message || "Unable to load saved posts");
+    }
+    setSavedLoading(false);
+    savedFetchingRef.current = false;
+  };
+
+  const loadUserPosts = async (page = 1, options = {}) => {
+    if (postsFetchingRef.current) {
+      return;
+    }
+    if (!profileUserId) {
+      setPostsError("Missing user id");
+      return;
+    }
+    postsFetchingRef.current = true;
+    const { append = false } = options;
+    setPostsLoading(true);
+    setPostsError("");
+    const res = await authService.getUserPosts(profileUserId, page, POSTS_PAGE_SIZE);
+
+    if (res?.isSuccess) {
+      const payload = res.data?.data ?? res.data;
+      const list = extractUserPostsList(payload);
+      setUserPosts((prev) => (append ? [...prev, ...list] : list));
+      setPostsHasMore(resolvePostsHasMore(payload, page, list.length));
+      setPostsPage(resolvePostsPage(payload, page));
+    } else {
+      setPostsError(res?.message || "Unable to load posts");
+    }
+    setPostsLoading(false);
+    postsFetchingRef.current = false;
+  };
+
+  useEffect(() => {
+    if (activeTab !== "Bookmarks" || savedInitialized) {
+      return;
+    }
+    setSavedInitialized(true);
+    loadSavedPosts(1, { append: false });
+  }, [activeTab, savedInitialized]);
+
+  useEffect(() => {
+    if (activeTab !== "Posts" || postsInitialized) {
+      return;
+    }
+    if (!profileUserId) {
+      return;
+    }
+    setPostsInitialized(true);
+    loadUserPosts(1, { append: false });
+  }, [activeTab, postsInitialized, profileUserId]);
+
   const stats = useMemo(() => {
     const postsCount = resolvedProfile?.postsCount ?? 0;
     const followersCount = resolvedProfile?.followersCount ?? 0;
@@ -258,23 +689,17 @@ const ProfileInfo = () => {
     ];
   }, [isFollowing, resolvedProfile]);
 
-  const tabs = ["Posts", "Bookmarks", "Announcements"];
-  const posts = [
-    { id: "1", likes: "244", tone: styles.postToneWarm },
-    { id: "2", likes: "1.2k", tone: styles.postToneLight },
-    { id: "3", likes: "89", tone: styles.postToneCool },
-    { id: "4", likes: "", tone: styles.postToneEmpty, dashed: true },
-  ];
+  const tabs = ["Posts", "Bookmarks"];
+  const postItems = useMemo(
+    () => userPosts.map((post, index) => normalizeUserPost(post, index)),
+    [userPosts]
+  );
 
-  const bookmarkItems = [
-    { id: "b1", title: "Saved Project Brief", time: "Updated 3 days ago" },
-    { id: "b2", title: "Studio Lighting Notes", time: "Saved last week" },
-  ];
+  const bookmarkItems = useMemo(
+    () => savedPosts.map((post, index) => normalizeSavedPost(post, index)),
 
-  const announcementItems = [
-    { id: "a1", title: "Portfolio Review Week", time: "Starts Monday" },
-    { id: "a2", title: "Internship Applications", time: "Closes Oct 12" },
-  ];
+    [savedPosts]
+  );
 
   const interactions = [
     {
@@ -305,32 +730,30 @@ const ProfileInfo = () => {
   };
 
   const renderPostItem = ({ item }) => (
-    <View
-      style={[
-        styles.postCard,
-        item.tone,
-        item.dashed && styles.postCardDashed,
-      ]}
-    >
-      {!item.dashed && (
-        <View style={styles.postOverlay}>
-          <Feather name="heart" size={12} color={Colors.white} />
-          <Text style={styles.postLikes}>{item.likes}</Text>
+    <View style={styles.listRow}>
+      {item.thumbnail ? (
+        <Image source={{ uri: item.thumbnail }} style={styles.bookmarkThumb} />
+      ) : (
+        <View style={styles.listIcon}>
+          <Feather name="image" size={16} color="#2563EB" />
         </View>
       )}
-      {item.dashed && (
-        <View style={styles.postEmptyIcon}>
-          <Feather name="image" size={22} color="#b9b9c6" />
-        </View>
-      )}
+      <View style={styles.listText}>
+        <Text style={styles.listTitle}>{item.title}</Text>
+        {item.time ? <Text style={styles.listMeta}>{item.time}</Text> : null}
+      </View>
     </View>
   );
 
   const renderBookmarkItem = ({ item }) => (
     <View style={styles.listRow}>
-      <View style={styles.listIcon}>
-        <Feather name="bookmark" size={16} color="#2563EB" />
-      </View>
+      {item.thumbnail ? (
+        <Image source={{ uri: item.thumbnail }} style={styles.bookmarkThumb} />
+      ) : (
+        <View style={styles.listIcon}>
+          <Feather name="bookmark" size={16} color="#2563EB" />
+        </View>
+      )}
       <View style={styles.listText}>
         <Text style={styles.listTitle}>{item.title}</Text>
         <Text style={styles.listMeta}>{item.time}</Text>
@@ -338,29 +761,21 @@ const ProfileInfo = () => {
     </View>
   );
 
-  const renderAnnouncementItem = ({ item }) => (
-    <View style={styles.listRow}>
-      <View style={styles.listIcon}>
-        <Feather name="bell" size={16} color="#2563EB" />
-      </View>
-      <View style={styles.listText}>
-        <Text style={styles.listTitle}>{item.title}</Text>
-        <Text style={styles.listMeta}>{item.time}</Text>
-      </View>
-    </View>
-  );
 
   return (
     <View style={styles.root}>
       <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshingProfile} onRefresh={handleRefreshProfile} tintColor="#2563EB" />}
+        onScroll={handleMainScroll}
+        scrollEventThrottle={16}
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
-        
 
-        
+
+
           <TouchableOpacity
             style={styles.avatarWrap}
             activeOpacity={0.85}
@@ -369,7 +784,7 @@ const ProfileInfo = () => {
             <View style={styles.avatarOuter}>
               <View style={styles.avatarInner}>
                 {avatarUri ? (
-                  <Image source={{ uri:avatarUri }} style={styles.avatarImage} />
+                  <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
                 ) : profileInitial ? (
                   <Text style={styles.avatarText}>{profileInitial}</Text>
                 ) : (
@@ -429,6 +844,10 @@ const ProfileInfo = () => {
                       ? `@${displayText(resolvedProfile?.username)}`
                       : ""}
                   </Text>
+
+                  <Text onPress={handleLogout}
+                    style={{  }}>{"Log out"}</Text>
+
                 </View>
                 {/* <TouchableOpacity
                   style={[
@@ -485,7 +904,7 @@ const ProfileInfo = () => {
                     >
                       {tab}
                     </Text>
-                    {tab === activeTab && <View style={styles.tabUnderline} />}
+                    {/* {tab === activeTab && <View style={styles.tabUnderline} />} */}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -504,30 +923,41 @@ const ProfileInfo = () => {
                 }}
               >
                 <View style={styles.tabPage}>
+                  {postsLoading && postItems.length === 0 ? (
+                    <View style={styles.listLoading}>
+                      <ActivityIndicator size="small" color="#2563EB" />
+                    </View>
+                  ) : null}
+                  {postsError ? (
+                    <Text style={styles.errorTextInline}>{postsError}</Text>
+                  ) : null}
+                  {!postsLoading && !postsError && postItems.length === 0 ? (
+                    <Text style={styles.emptyState}>No posts yet.</Text>
+                  ) : null}
                   <FlatList
-                    data={posts}
+                    data={postItems}
                     keyExtractor={(item) => item.id}
                     renderItem={renderPostItem}
-                    numColumns={2}
-                    columnWrapperStyle={styles.gridRow}
-                    contentContainerStyle={styles.gridContent}
-                    scrollEnabled={false}
-                  />
-                </View>
-                <View style={styles.tabPage}>
-                  <FlatList
-                    data={bookmarkItems}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderBookmarkItem}
                     contentContainerStyle={styles.listBlock}
                     scrollEnabled={false}
                   />
                 </View>
                 <View style={styles.tabPage}>
+                  {savedLoading && bookmarkItems.length === 0 ? (
+                    <View style={styles.listLoading}>
+                      <ActivityIndicator size="small" color="#2563EB" />
+                    </View>
+                  ) : null}
+                  {savedError ? (
+                    <Text style={styles.errorTextInline}>{savedError}</Text>
+                  ) : null}
+                  {!savedLoading && !savedError && bookmarkItems.length === 0 ? (
+                    <Text style={styles.emptyState}>No saved posts yet.</Text>
+                  ) : null}
                   <FlatList
-                    data={announcementItems}
+                    data={bookmarkItems}
                     keyExtractor={(item) => item.id}
-                    renderItem={renderAnnouncementItem}
+                    renderItem={renderBookmarkItem}
                     contentContainerStyle={styles.listBlock}
                     scrollEnabled={false}
                   />
@@ -607,8 +1037,8 @@ const ProfileInfo = () => {
       </Modal>
     </View>
   );
-};
 
+}
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -691,7 +1121,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-   backgroundColor: "#93C5FD",
+    backgroundColor: "#93C5FD",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -927,7 +1357,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   tabPagerContent: {
-    width: SCREEN_WIDTH * 3,
+    width: SCREEN_WIDTH * 2,
   },
   tabPage: {
     width: SCREEN_WIDTH,
@@ -939,8 +1369,31 @@ const styles = StyleSheet.create({
   gridContent: {
     paddingBottom: 6,
   },
+  gridItem: {
+    width: (SCREEN_WIDTH - 44) / 2,
+    aspectRatio: 1,
+    marginBottom: 8,
+  },
+  gridTile: {
+    flex: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+    justifyContent: "flex-end",
+  },
+  bookmarkGridImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 10,
+  },
+  bookmarkGridFallback: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "#EAF0FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   postCard: {
-    width: "48%",
+    width: "100%",
     height: 150,
     borderRadius: 26,
     marginBottom: 14,
@@ -988,6 +1441,11 @@ const styles = StyleSheet.create({
   listBlock: {
     marginTop: 6,
   },
+  listLoading: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   listRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -995,9 +1453,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderColor: "#E4E7EC",
   },
+  bookmarkThumb: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    marginRight: 12,
+    backgroundColor: "#EAF0FF",
+  },
   listIcon: {
-    width: 36,
-    height: 36,
+    width: 100,
+    height: 100,
     borderRadius: 18,
     backgroundColor: "#EAF0FF",
     alignItems: "center",
@@ -1016,6 +1481,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#667085",
     marginTop: 4,
+  },
+  emptyState: {
+    textAlign: "center",
+    color: "#667085",
+    fontSize: 13,
+    paddingVertical: 12,
+  },
+  loadMoreButton: {
+    marginTop: 12,
+    alignSelf: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    backgroundColor: "#F8FAFF",
+  },
+  loadMoreText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#2563EB",
   },
   interactionSection: {
     paddingHorizontal: 22,
@@ -1119,3 +1605,8 @@ const styles = StyleSheet.create({
 });
 
 export default ProfileInfo;
+
+
+
+
+
