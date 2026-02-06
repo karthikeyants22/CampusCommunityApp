@@ -3513,6 +3513,7 @@ const styles = StyleSheet.create({
   mediaSlide: {
     width: MEDIA_WIDTH,
     paddingHorizontal: 0,
+    
   },
   mediaContentContainer: {
     paddingHorizontal: 0,

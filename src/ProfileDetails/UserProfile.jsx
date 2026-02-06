@@ -28,6 +28,12 @@ import { launchCamera, launchImageLibrary } from "react-native-image-picker";
 const FALLBACK_TEXT = "";
 const DOTS = Array.from({ length: 90 });
 const SCREEN_WIDTH = Dimensions.get("window").width;
+const GRID_COLUMNS = 3;
+const GRID_GAP = 6;
+const GRID_SIDE_PADDING = 22;
+const GRID_ITEM_SIZE = Math.floor(
+  (SCREEN_WIDTH - GRID_SIDE_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+);
 const AVATAR_ORIGIN = "https://archived-howto-attacked-regularly.trycloudflare.com";
 const ANDROID_13 = 33;
 const SAVED_PAGE_SIZE = 10;
@@ -706,7 +712,7 @@ const UserProfieInfo = () => {
     ];
   }, [isFollowing, resolvedProfile]);
 
-  const tabs = ["Posts", "Bookmarks"];
+  const tabs = ["Posts"];
   const postItems = useMemo(
     () => userPosts.map((post, index) => normalizeUserPost(post, index)),
     [userPosts]
@@ -747,19 +753,21 @@ const UserProfieInfo = () => {
   };
 
   const renderPostItem = ({ item }) => (
-    <View style={styles.listRow}>
-      {item.thumbnail ? (
-        <Image source={{ uri: item.thumbnail }} style={styles.bookmarkThumb} />
-      ) : (
-        <View style={styles.listIcon}>
-          <Feather name="image" size={16} color="#2563EB" />
-        </View>
-      )}
-      <View style={styles.listText}>
-        <Text style={styles.listTitle}>{item.title}</Text>
-        {item.time ? <Text style={styles.listMeta}>{item.time}</Text> : null}
+    <TouchableOpacity style={styles.gridItem} activeOpacity={0.85}>
+      <View style={styles.gridTile}>
+        {item.thumbnail ? (
+          <Image
+            source={{ uri: item.thumbnail }}
+            style={styles.gridImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={styles.gridFallback}>
+            <Feather name="image" size={18} color="#2563EB" />
+          </View>
+        )}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderBookmarkItem = ({ item }) => (
@@ -952,7 +960,9 @@ const UserProfieInfo = () => {
                     data={postItems}
                     keyExtractor={(item) => item.id}
                     renderItem={renderPostItem}
-                    contentContainerStyle={styles.listBlock}
+                    numColumns={GRID_COLUMNS}
+                    columnWrapperStyle={styles.gridRow}
+                    contentContainerStyle={styles.gridContent}
                     scrollEnabled={false}
                   />
                 </View>
@@ -1365,20 +1375,32 @@ const styles = StyleSheet.create({
   },
   gridRow: {
     justifyContent: "space-between",
+    marginBottom: GRID_GAP,
   },
   gridContent: {
     paddingBottom: 6,
   },
   gridItem: {
-    width: (SCREEN_WIDTH - 44) / 2,
-    aspectRatio: 1,
-    marginBottom: 8,
+    width: GRID_ITEM_SIZE,
+    height: GRID_ITEM_SIZE,
   },
   gridTile: {
     flex: 1,
     borderRadius: 10,
     overflow: "hidden",
     justifyContent: "flex-end",
+  },
+  gridImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 10,
+  },
+  gridFallback: {
+    flex: 1,
+    borderRadius: 10,
+    backgroundColor: "#EAF0FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   bookmarkGridImage: {
     width: "100%",
